@@ -1,0 +1,69 @@
+name: CISE Study Bot CI
+
+on:
+  push:
+    branches: [main, claude/*]
+    paths:
+      - 'study_bot/**'
+      - '.github/workflows/study-bot-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'study_bot/**'
+      - '.github/workflows/study-bot-ci.yml'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.10', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Display Python version
+        run: python --version
+
+      - name: Run syntax check
+        run: python -m py_compile study_bot/main.py
+
+      - name: Compile all modules
+        run: |
+          python -m py_compile study_bot/models.py
+          python -m py_compile study_bot/storage.py
+          python -m py_compile study_bot/bot.py
+          python -m py_compile study_bot/quiz.py
+          python -m py_compile study_bot/sample_data.py
+
+      - name: Run automated tests
+        run: python study_bot/test_bot.py
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check syntax (pyflakes)
+        run: |
+          pip install pyflakes
+          pyflakes study_bot/models.py
+          pyflakes study_bot/storage.py
+          pyflakes study_bot/quiz.py
+          pyflakes study_bot/sample_data.py
+          pyflakes study_bot/test_bot.py

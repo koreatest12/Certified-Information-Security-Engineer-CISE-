@@ -39,3 +39,11 @@
 
 # debug information files
 *.dwo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Study bot data files (user-generated)
+study_bot/data/*.json

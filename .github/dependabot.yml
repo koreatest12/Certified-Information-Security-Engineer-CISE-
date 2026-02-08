@@ -1,3 +1,6 @@
+# 1. Dependabot 설정 파일 생성 (3개 생태계, 매일 99개 업데이트)
+mkdir -p .github
+cat <<EOF > .github/dependabot.yml
 version: 2
 
 updates:
@@ -8,9 +11,9 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-      time: "09:00"         # 한국 시간 18:00 (UTC 09:00)
+      time: "09:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 99  # 한 번에 최대 99개 PR 생성
+    open-pull-requests-limit: 99
     labels:
       - "actions"
       - "ci-cd"
@@ -26,7 +29,6 @@ updates:
       time: "09:00"
       timezone: "Asia/Seoul"
     open-pull-requests-limit: 99
-    # 개발 의존성도 포함하여 업데이트
     allow:
       - dependency-type: "all"
     labels:
@@ -37,7 +39,6 @@ updates:
   # -------------------------------------------------------------
   # 3. Docker 이미지 및 컨테이너 업데이트
   # -------------------------------------------------------------
-  # 앞선 스크립트에서 생성한 docker/app 디렉토리 감지
   - package-ecosystem: "docker"
     directory: "/docker/app"
     schedule:
@@ -48,3 +49,216 @@ updates:
     labels:
       - "docker"
       - "infrastructure"
+EOF
+
+# 2. 시스템 헬스 체크 워크플로우 생성 (타겟 리포지토리 점검 포함)
+mkdir -p .github/workflows
+cat <<'EOF' > .github/workflows/system-health-check.yml
+name: System Health Check
+
+on:
+  schedule:
+    # 20분 단위로 실행
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_rerun:
+        description: '문제 발생 시 강제 재수행 여부'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+env:
+  CPU_THRESHOLD: 90
+  MEMORY_THRESHOLD: 90
+  DISK_THRESHOLD: 85
+  INODE_THRESHOLD: 90
+  NETWORK_TIMEOUT: 5
+  MAX_RETRY_COUNT: 3
+  RETRY_DELAY: 30
+  # [Target Repo] 외부 리포지토리 점검 대상
+  TARGET_REPO_URL: "https://github.com/koreatest12/Certified-Information-Security-Engineer-CISE-.git"
+  COMMIT_AGE_THRESHOLD: 30
+
+jobs:
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    outputs:
+      check-failed: ${{ steps.summary.outputs.check_failed }}
+      failure-details: ${{ steps.summary.outputs.failure_details }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. CPU Check
+      - name: CPU Check
+        id: cpu_check
+        run: |
+          echo "=== CPU Health Check ==="
+          CPU_USAGE=$(top -bn2 -d1 | grep "Cpu(s)" | tail -1 | awk '{print $2}' | cut -d'%' -f1)
+          echo "CPU Usage: ${CPU_USAGE}%"
+          CPU_INT=${CPU_USAGE%.*}
+          if [ "${CPU_INT:-0}" -ge "$CPU_THRESHOLD" ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      # 2. Memory Check
+      - name: Memory Check
+        id: memory_check
+        run: |
+          echo "=== Memory Health Check ==="
+          TOTAL=$(free -m | awk '/^Mem:/{print $2}')
+          USED=$(free -m | awk '/^Mem:/{print $3}')
+          USAGE=$(awk "BEGIN {printf \"%.1f\", ($USED/$TOTAL)*100}")
+          echo "Memory Usage: ${USAGE}%"
+          INT=${USAGE%.*}
+          if [ "${INT:-0}" -ge "$MEMORY_THRESHOLD" ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      # 3. Disk Check
+      - name: Disk Check
+        id: disk_check
+        run: |
+          echo "=== Disk Health Check ==="
+          df -h
+          WARN=false
+          while read line; do
+            USAGE=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            if [ -n "$USAGE" ] && [ "$USAGE" -ge "$DISK_THRESHOLD" ]; then WARN=true; fi
+          done < <(df -h | tail -n +2 | grep -v "tmpfs\|udev")
+          if [ "$WARN" = true ]; then echo "status=warning" >> $GITHUB_OUTPUT; else echo "status=ok" >> $GITHUB_OUTPUT; fi
+
+      # 4. Filesystem Check
+      - name: Filesystem Check
+        id: filesystem_check
+        run: |
+          echo "=== Filesystem Health Check ==="
+          WARN=false
+          while read line; do
+            USAGE=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            if [ -n "$USAGE" ] && [ "$USAGE" -ge "$INODE_THRESHOLD" ]; then WARN=true; fi
+          done < <(df -i | tail -n +2 | grep -v "tmpfs\|udev")
+          if [ "$WARN" = true ]; then echo "status=warning" >> $GITHUB_OUTPUT; else echo "status=ok" >> $GITHUB_OUTPUT; fi
+
+      # 5. Network Check
+      - name: Network Check
+        id: network_check
+        run: |
+          echo "=== Network Health Check ==="
+          WARN=false
+          for target in "https://github.com" "https://pypi.org"; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$NETWORK_TIMEOUT" "$target" || echo "000")
+            if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 400 ]; then WARN=true; fi
+          done
+          if [ "$WARN" = true ]; then echo "status=warning" >> $GITHUB_OUTPUT; else echo "status=ok" >> $GITHUB_OUTPUT; fi
+
+      # 6. Target Repository Check (외부 리포지토리 점검)
+      - name: Target Repository Check
+        id: repo_check
+        run: |
+          echo "=== Target Repo Check: ${{ env.TARGET_REPO_URL }} ==="
+          STATUS="ok"
+          
+          # HTTP 접근성
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.TARGET_REPO_URL }}" || echo "000")
+          if [ "$CODE" -ne 200 ] && [ "$CODE" -ne 301 ] && [ "$CODE" -ne 302 ]; then
+            echo "::warning::HTTP Access Failed ($CODE)"
+            STATUS="warning"
+          fi
+          
+          # Git Clone 테스트
+          if git clone --depth 1 "${{ env.TARGET_REPO_URL }}" target_check 2>/dev/null; then
+            cd target_check
+            LAST_COMMIT=$(git log -1 --format=%ct)
+            NOW=$(date +%s)
+            DAYS=$(( (NOW - LAST_COMMIT) / 86400 ))
+            echo "Days since last commit: $DAYS"
+            if [ "$DAYS" -gt "${{ env.COMMIT_AGE_THRESHOLD }}" ]; then
+              echo "::notice::Repo is old ($DAYS days)"
+            fi
+            cd .. && rm -rf target_check
+          else
+            echo "::error::Git Clone Failed"
+            STATUS="warning"
+          fi
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+
+      # 7. Capacity Summary
+      - name: Capacity Summary
+        id: capacity_check
+        run: echo "status=ok" >> $GITHUB_OUTPUT
+
+      # 8. Report Generation
+      - name: Generate Report
+        id: summary
+        if: always()
+        run: |
+          FAILED=false
+          DETAILS=""
+          declare -A C=( ["CPU"]="${{ steps.cpu_check.outputs.status }}" ["Memory"]="${{ steps.memory_check.outputs.status }}" ["Disk"]="${{ steps.disk_check.outputs.status }}" ["FS"]="${{ steps.filesystem_check.outputs.status }}" ["Net"]="${{ steps.network_check.outputs.status }}" ["TargetRepo"]="${{ steps.repo_check.outputs.status }}" )
+          
+          for k in "${!C[@]}"; do
+            if [ "${C[$k]}" = "warning" ]; then FAILED=true; DETAILS="$DETAILS$k, "; fi
+          done
+          
+          echo "check_failed=$FAILED" >> $GITHUB_OUTPUT
+          if [ "$FAILED" = true ]; then
+            echo "failure_details=$DETAILS" >> $GITHUB_OUTPUT
+            echo "::error::Health Check Failed: $DETAILS"
+          fi
+
+  force-rerun:
+    name: Force Re-run on Failure
+    needs: health-check
+    if: always() && needs.health-check.outputs.check-failed == 'true' && inputs.force_rerun != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait and Retry
+        run: sleep ${{ env.RETRY_DELAY || 30 }}
+      
+      - name: Trigger Re-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const MAX = parseInt('${{ env.MAX_RETRY_COUNT }}') || 3;
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'system-health-check.yml', per_page: MAX + 1
+            });
+            let fails = 0;
+            for (const r of runs.data.workflow_runs) { if (r.conclusion === 'failure') fails++; else break; }
+            
+            if (fails < MAX) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner, repo: context.repo.repo,
+                workflow_id: 'system-health-check.yml', ref: '${{ github.ref }}',
+                inputs: { force_rerun: 'true' }
+              });
+            } else {
+              // 이슈 생성
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: `[Alert] System Health Check Failed (Max Retries)`,
+                body: `Health check failed ${fails} times consecutively. Manual check required.`
+              });
+            }
+EOF
+
+# 3. Git 반영
+git add .github/dependabot.yml .github/workflows/system-health-check.yml
+git commit -m "feat: Apply Massive Dependabot settings & System Health Check (incl. Target Repo)"
+git push origin claude/study-material-bot-ykv54

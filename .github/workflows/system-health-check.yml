@@ -1,0 +1,544 @@
+name: System Health Check
+
+on:
+  schedule:
+    # 20분 단위로 실행
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_rerun:
+        description: '문제 발생 시 강제 재수행 여부'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  # 임계값 설정
+  CPU_THRESHOLD: 90
+  MEMORY_THRESHOLD: 90
+  DISK_THRESHOLD: 85
+  INODE_THRESHOLD: 90
+  NETWORK_TIMEOUT: 5
+  MAX_RETRY_COUNT: 3
+  RETRY_DELAY: 30
+
+jobs:
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    outputs:
+      check-failed: ${{ steps.summary.outputs.check_failed }}
+      failure-details: ${{ steps.summary.outputs.failure_details }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: CPU Check
+        id: cpu_check
+        run: |
+          echo "========================================="
+          echo "  CPU Health Check"
+          echo "========================================="
+
+          # CPU 코어 수 확인
+          CPU_CORES=$(nproc)
+          echo "CPU Cores: $CPU_CORES"
+
+          # CPU 사용률 확인 (1초 샘플링)
+          CPU_USAGE=$(top -bn2 -d1 | grep "Cpu(s)" | tail -1 | awk '{print $2}' | cut -d'%' -f1)
+          echo "CPU Usage: ${CPU_USAGE}%"
+
+          # CPU 로드 평균 확인
+          LOAD_AVG=$(cat /proc/loadavg)
+          LOAD_1MIN=$(echo "$LOAD_AVG" | awk '{print $1}')
+          LOAD_5MIN=$(echo "$LOAD_AVG" | awk '{print $2}')
+          LOAD_15MIN=$(echo "$LOAD_AVG" | awk '{print $3}')
+          echo "Load Average (1/5/15 min): $LOAD_1MIN / $LOAD_5MIN / $LOAD_15MIN"
+
+          # CPU 모델 정보
+          CPU_MODEL=$(lscpu | grep "Model name" | sed 's/Model name:\s*//')
+          echo "CPU Model: $CPU_MODEL"
+
+          # 프로세스별 CPU 사용률 상위 5개
+          echo ""
+          echo "--- Top 5 CPU Consuming Processes ---"
+          ps aux --sort=-%cpu | head -6
+
+          # 임계값 초과 여부 판단
+          CPU_INT=${CPU_USAGE%.*}
+          if [ "${CPU_INT:-0}" -ge "$CPU_THRESHOLD" ]; then
+            echo ""
+            echo "::warning::CPU usage ${CPU_USAGE}% exceeds threshold ${CPU_THRESHOLD}%"
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "CPU status: OK"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Memory Check
+        id: memory_check
+        run: |
+          echo "========================================="
+          echo "  Memory Health Check"
+          echo "========================================="
+
+          # 메모리 정보 (MB 단위)
+          free -m | tee /tmp/memory_info.txt
+
+          TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
+          USED_MEM=$(free -m | awk '/^Mem:/{print $3}')
+          FREE_MEM=$(free -m | awk '/^Mem:/{print $4}')
+          AVAILABLE_MEM=$(free -m | awk '/^Mem:/{print $7}')
+          CACHE_MEM=$(free -m | awk '/^Mem:/{print $6}')
+
+          # 메모리 사용률 계산
+          MEM_USAGE_PCT=$(awk "BEGIN {printf \"%.1f\", ($USED_MEM/$TOTAL_MEM)*100}")
+
+          echo ""
+          echo "Total Memory: ${TOTAL_MEM} MB"
+          echo "Used Memory: ${USED_MEM} MB"
+          echo "Free Memory: ${FREE_MEM} MB"
+          echo "Available Memory: ${AVAILABLE_MEM} MB"
+          echo "Cached Memory: ${CACHE_MEM} MB"
+          echo "Memory Usage: ${MEM_USAGE_PCT}%"
+
+          # Swap 정보
+          echo ""
+          echo "--- Swap Information ---"
+          SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')
+          SWAP_USED=$(free -m | awk '/^Swap:/{print $3}')
+          echo "Swap Total: ${SWAP_TOTAL} MB"
+          echo "Swap Used: ${SWAP_USED} MB"
+
+          # 메모리 사용량 상위 5개 프로세스
+          echo ""
+          echo "--- Top 5 Memory Consuming Processes ---"
+          ps aux --sort=-%mem | head -6
+
+          # 임계값 초과 여부 판단
+          MEM_INT=${MEM_USAGE_PCT%.*}
+          if [ "${MEM_INT:-0}" -ge "$MEMORY_THRESHOLD" ]; then
+            echo ""
+            echo "::warning::Memory usage ${MEM_USAGE_PCT}% exceeds threshold ${MEMORY_THRESHOLD}%"
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "Memory status: OK"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Disk Check
+        id: disk_check
+        run: |
+          echo "========================================="
+          echo "  Disk Health Check"
+          echo "========================================="
+
+          # 디스크 사용량 확인
+          echo "--- Disk Usage (df -h) ---"
+          df -h | tee /tmp/disk_info.txt
+
+          echo ""
+          echo "--- Disk I/O Statistics ---"
+          iostat -x 1 1 2>/dev/null || echo "iostat not available, skipping I/O stats"
+
+          # 루트 파티션 사용률 확인
+          ROOT_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo ""
+          echo "Root partition usage: ${ROOT_USAGE}%"
+
+          # 모든 파티션 확인
+          DISK_WARNING=false
+          echo ""
+          echo "--- Partition Usage Summary ---"
+          while IFS= read -r line; do
+            USAGE=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            MOUNT=$(echo "$line" | awk '{print $6}')
+            if [ -n "$USAGE" ] && [ "$USAGE" -ge "$DISK_THRESHOLD" ] 2>/dev/null; then
+              echo "::warning::Disk usage on $MOUNT is ${USAGE}% (threshold: ${DISK_THRESHOLD}%)"
+              DISK_WARNING=true
+            fi
+          done < <(df -h | tail -n +2 | grep -v "tmpfs\|udev")
+
+          if [ "$DISK_WARNING" = true ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "Disk status: OK"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Filesystem Check
+        id: filesystem_check
+        run: |
+          echo "========================================="
+          echo "  Filesystem Health Check"
+          echo "========================================="
+
+          # inode 사용률 확인
+          echo "--- Inode Usage ---"
+          df -i | tee /tmp/inode_info.txt
+
+          INODE_WARNING=false
+          echo ""
+          echo "--- Inode Usage Summary ---"
+          while IFS= read -r line; do
+            USAGE=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            MOUNT=$(echo "$line" | awk '{print $6}')
+            if [ -n "$USAGE" ] && [ "$USAGE" -ge "$INODE_THRESHOLD" ] 2>/dev/null; then
+              echo "::warning::Inode usage on $MOUNT is ${USAGE}% (threshold: ${INODE_THRESHOLD}%)"
+              INODE_WARNING=true
+            fi
+          done < <(df -i | tail -n +2 | grep -v "tmpfs\|udev")
+
+          # 파일시스템 타입 확인
+          echo ""
+          echo "--- Filesystem Types ---"
+          df -T | grep -v "tmpfs\|udev\|overlay"
+
+          # 마운트 포인트 확인
+          echo ""
+          echo "--- Mount Points ---"
+          mount | grep -E "^/dev" || echo "No /dev mounts found"
+
+          # 읽기 전용 파일시스템 확인
+          echo ""
+          echo "--- Read-Only Filesystem Check ---"
+          RO_FS=$(mount | grep " ro," || true)
+          if [ -n "$RO_FS" ]; then
+            echo "::warning::Read-only filesystems detected:"
+            echo "$RO_FS"
+            INODE_WARNING=true
+          else
+            echo "No unexpected read-only filesystems detected"
+          fi
+
+          # 대용량 파일 확인 (100MB 이상, 상위 10개)
+          echo ""
+          echo "--- Large Files (>100MB, top 10) ---"
+          find / -xdev -type f -size +100M -exec ls -lh {} \; 2>/dev/null | sort -k5 -rh | head -10 || echo "No large files found"
+
+          if [ "$INODE_WARNING" = true ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "Filesystem status: OK"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Network Check
+        id: network_check
+        run: |
+          echo "========================================="
+          echo "  Network Health Check"
+          echo "========================================="
+
+          NETWORK_WARNING=false
+
+          # 네트워크 인터페이스 확인
+          echo "--- Network Interfaces ---"
+          ip addr show 2>/dev/null || ifconfig 2>/dev/null || echo "Network interface info unavailable"
+
+          # DNS 확인
+          echo ""
+          echo "--- DNS Resolution Check ---"
+          DNS_TARGETS=("google.com" "github.com" "cloudflare.com")
+          for target in "${DNS_TARGETS[@]}"; do
+            if nslookup "$target" > /dev/null 2>&1; then
+              echo "DNS resolution for $target: OK"
+            else
+              echo "::warning::DNS resolution for $target: FAILED"
+              NETWORK_WARNING=true
+            fi
+          done
+
+          # 외부 연결 확인 (ping)
+          echo ""
+          echo "--- External Connectivity Check ---"
+          PING_TARGETS=("8.8.8.8" "1.1.1.1")
+          for target in "${PING_TARGETS[@]}"; do
+            if ping -c 3 -W "$NETWORK_TIMEOUT" "$target" > /dev/null 2>&1; then
+              LATENCY=$(ping -c 3 -W "$NETWORK_TIMEOUT" "$target" | tail -1 | awk -F'/' '{print $5}')
+              echo "Ping to $target: OK (avg ${LATENCY}ms)"
+            else
+              echo "::warning::Ping to $target: FAILED"
+              NETWORK_WARNING=true
+            fi
+          done
+
+          # HTTP 연결 확인
+          echo ""
+          echo "--- HTTP Connectivity Check ---"
+          HTTP_TARGETS=("https://github.com" "https://registry.npmjs.org" "https://pypi.org")
+          for target in "${HTTP_TARGETS[@]}"; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$NETWORK_TIMEOUT" "$target" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "HTTP check $target: OK (HTTP $HTTP_CODE)"
+            else
+              echo "::warning::HTTP check $target: FAILED (HTTP $HTTP_CODE)"
+              NETWORK_WARNING=true
+            fi
+          done
+
+          # 포트 리스닝 상태 확인
+          echo ""
+          echo "--- Listening Ports ---"
+          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "Port info unavailable"
+
+          # 네트워크 통계
+          echo ""
+          echo "--- Network Statistics ---"
+          cat /proc/net/dev 2>/dev/null | head -10 || echo "Network stats unavailable"
+
+          if [ "$NETWORK_WARNING" = true ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "Network status: OK"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Capacity Summary Check
+        id: capacity_check
+        run: |
+          echo "========================================="
+          echo "  Capacity Overview"
+          echo "========================================="
+
+          echo "--- System Information ---"
+          uname -a
+          echo ""
+
+          echo "--- Uptime ---"
+          uptime
+          echo ""
+
+          echo "--- Resource Summary ---"
+          echo "CPU Cores: $(nproc)"
+          echo "Total Memory: $(free -h | awk '/^Mem:/{print $2}')"
+          echo "Total Swap: $(free -h | awk '/^Swap:/{print $2}')"
+          echo "Total Disk: $(df -h / | tail -1 | awk '{print $2}')"
+          echo "Used Disk: $(df -h / | tail -1 | awk '{print $3}')"
+          echo ""
+
+          # 시스템 리소스 제한 확인
+          echo "--- System Limits ---"
+          echo "Open files limit: $(ulimit -n)"
+          echo "Max processes: $(ulimit -u)"
+          echo ""
+
+          # 현재 실행 중인 프로세스 수
+          PROC_COUNT=$(ps aux | wc -l)
+          echo "Running processes: $PROC_COUNT"
+          echo ""
+
+          # 좀비 프로세스 확인
+          ZOMBIE_COUNT=$(ps aux | awk '$8 ~ /Z/ {count++} END {print count+0}')
+          echo "Zombie processes: $ZOMBIE_COUNT"
+          if [ "$ZOMBIE_COUNT" -gt 0 ]; then
+            echo "::warning::$ZOMBIE_COUNT zombie processes detected"
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Health Report
+        id: summary
+        if: always()
+        run: |
+          echo "========================================="
+          echo "  SYSTEM HEALTH CHECK REPORT"
+          echo "  $(date '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "========================================="
+
+          CHECK_FAILED=false
+          FAILURE_DETAILS=""
+
+          # 각 체크 결과 수집
+          declare -A CHECKS=(
+            ["CPU"]="${{ steps.cpu_check.outputs.status }}"
+            ["Memory"]="${{ steps.memory_check.outputs.status }}"
+            ["Disk"]="${{ steps.disk_check.outputs.status }}"
+            ["Filesystem"]="${{ steps.filesystem_check.outputs.status }}"
+            ["Network"]="${{ steps.network_check.outputs.status }}"
+            ["Capacity"]="${{ steps.capacity_check.outputs.status }}"
+          )
+
+          echo ""
+          echo "+--------------+----------+"
+          echo "| Check        | Status   |"
+          echo "+--------------+----------+"
+
+          for check in "CPU" "Memory" "Disk" "Filesystem" "Network" "Capacity"; do
+            status="${CHECKS[$check]}"
+            if [ "$status" = "warning" ]; then
+              printf "| %-12s | %-8s |\n" "$check" "WARNING"
+              CHECK_FAILED=true
+              FAILURE_DETAILS="${FAILURE_DETAILS}${check}, "
+            elif [ "$status" = "ok" ]; then
+              printf "| %-12s | %-8s |\n" "$check" "OK"
+            else
+              printf "| %-12s | %-8s |\n" "$check" "UNKNOWN"
+              CHECK_FAILED=true
+              FAILURE_DETAILS="${FAILURE_DETAILS}${check}(unknown), "
+            fi
+          done
+
+          echo "+--------------+----------+"
+          echo ""
+
+          # 결과 출력
+          echo "check_failed=$CHECK_FAILED" >> $GITHUB_OUTPUT
+
+          if [ "$CHECK_FAILED" = true ]; then
+            FAILURE_DETAILS=${FAILURE_DETAILS%, }
+            echo "failure_details=$FAILURE_DETAILS" >> $GITHUB_OUTPUT
+            echo "::error::Health check issues detected in: $FAILURE_DETAILS"
+            echo ""
+            echo "RESULT: ISSUES DETECTED - Review warnings above"
+          else
+            echo "failure_details=" >> $GITHUB_OUTPUT
+            echo ""
+            echo "RESULT: ALL CHECKS PASSED"
+          fi
+
+  # 문제 발생 시 강제 재수행 Job
+  force-rerun:
+    name: Force Re-run on Failure
+    needs: health-check
+    if: |
+      always() &&
+      needs.health-check.outputs.check-failed == 'true' &&
+      (github.event.inputs.force_rerun != 'false')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report failure details
+        run: |
+          echo "========================================="
+          echo "  Health Check Failure Detected"
+          echo "========================================="
+          echo ""
+          echo "Failed checks: ${{ needs.health-check.outputs.failure-details }}"
+          echo "Initiating force re-run..."
+
+      - name: Wait before retry
+        run: |
+          echo "Waiting ${RETRY_DELAY} seconds before retry..."
+          sleep ${{ env.RETRY_DELAY || 30 }}
+
+      - name: Trigger workflow re-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const MAX_RETRY = parseInt('${{ env.MAX_RETRY_COUNT }}') || 3;
+
+            // 현재 실행의 재시도 횟수를 확인 (run_attempt)
+            const currentAttempt = context.runNumber;
+            console.log(`Current run attempt info - Run number: ${currentAttempt}`);
+
+            // 최근 워크플로우 실행 기록 확인하여 연속 실패 횟수 계산
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'system-health-check.yml',
+              per_page: MAX_RETRY + 1,
+              status: 'completed'
+            });
+
+            let consecutiveFailures = 0;
+            for (const run of runs.data.workflow_runs) {
+              if (run.conclusion === 'failure' || run.conclusion === 'action_required') {
+                consecutiveFailures++;
+              } else {
+                break;
+              }
+            }
+
+            console.log(`Consecutive failures: ${consecutiveFailures}`);
+            console.log(`Max retry count: ${MAX_RETRY}`);
+
+            if (consecutiveFailures >= MAX_RETRY) {
+              console.log(`Maximum retry count (${MAX_RETRY}) reached. Stopping re-runs.`);
+              core.warning(`Health check has failed ${consecutiveFailures} consecutive times. Manual intervention required.`);
+              return;
+            }
+
+            console.log(`Triggering re-run (${consecutiveFailures + 1}/${MAX_RETRY})...`);
+
+            // 워크플로우 재실행 트리거
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'system-health-check.yml',
+              ref: '${{ github.ref }}',
+              inputs: {
+                force_rerun: 'true'
+              }
+            });
+
+            console.log('Re-run triggered successfully.');
+
+      - name: Create issue on persistent failure
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const MAX_RETRY = parseInt('${{ env.MAX_RETRY_COUNT }}') || 3;
+
+            // 최근 실패 기록 확인
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'system-health-check.yml',
+              per_page: MAX_RETRY + 1,
+              status: 'completed'
+            });
+
+            let consecutiveFailures = 0;
+            for (const run of runs.data.workflow_runs) {
+              if (run.conclusion === 'failure' || run.conclusion === 'action_required') {
+                consecutiveFailures++;
+              } else {
+                break;
+              }
+            }
+
+            // 최대 재시도 횟수 도달 시 이슈 생성
+            if (consecutiveFailures >= MAX_RETRY) {
+              const failureDetails = '${{ needs.health-check.outputs.failure-details }}';
+              const now = new Date().toISOString();
+
+              // 기존 열린 이슈 확인
+              const existingIssues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: 'system-health,auto-generated',
+                state: 'open'
+              });
+
+              if (existingIssues.data.length > 0) {
+                // 기존 이슈에 코멘트 추가
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existingIssues.data[0].number,
+                  body: `## Health Check Still Failing\n\n**Time**: ${now}\n**Failed Checks**: ${failureDetails}\n**Consecutive Failures**: ${consecutiveFailures}\n\nManual intervention required.`
+                });
+                console.log(`Updated existing issue #${existingIssues.data[0].number}`);
+              } else {
+                // 새 이슈 생성
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `[Alert] System Health Check Failed - ${failureDetails}`,
+                  body: `## System Health Check Failure Report\n\n**Time**: ${now}\n**Failed Checks**: ${failureDetails}\n**Consecutive Failures**: ${consecutiveFailures}\n**Max Retries Reached**: Yes (${MAX_RETRY})\n\n### Action Required\n\nThe system health check has failed ${consecutiveFailures} consecutive times.\nAutomatic retries have been exhausted. Manual investigation is needed.\n\n### Failed Components\n${failureDetails.split(', ').map(c => '- [ ] ' + c).join('\n')}\n\n### Workflow Run\n[View Run Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+                  labels: ['system-health', 'auto-generated']
+                });
+                console.log('Created new issue for persistent health check failure.');
+              }
+            }

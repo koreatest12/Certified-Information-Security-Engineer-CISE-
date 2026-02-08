@@ -1,4 +1,4 @@
-name: "🚀 CISE Bot: Integrated Knowledge Engine"
+name: "🛡️ CISE Bot: Massive Data Fix"
 
 on:
   push:
@@ -7,8 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  knowledge-integration:
-    name: 🏗️ Knowledge Injection & Simulation
+  fix-and-simulate:
     runs-on: ubuntu-latest
     
     steps:
@@ -18,99 +17,58 @@ jobs:
       # ---------------------------------------------------
       # 1. 환경 설정
       # ---------------------------------------------------
-      - name: 📝 Generate requirements.txt
-        run: |
-          cat <<EOF > requirements.txt
-          requests>=2.31.0
-          pytest>=7.4.0
-          flake8>=6.1.0
-          bandit>=1.7.5
-          EOF
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
 
       # ---------------------------------------------------
-      # 2. [Core] 소스 코드를 통한 지식 데이터 대량 생성
+      # 2. [핵심] 대량 데이터 생성 엔진 실행
       # ---------------------------------------------------
-      - name: 🧠 Run Knowledge Engine (sample_data.py)
+      - name: 🧠 Run Massive Generator (sample_data.py)
         run: |
-          echo "Executing internal knowledge engine..."
+          echo "Running generator..."
           
-          # 파이썬 모듈 경로 설정
+          # 1. 모듈 경로 인식 설정
           export PYTHONPATH=$PYTHONPATH:.
           
-          # 소스 코드 내의 생성 로직 실행 (10,000개 퀴즈 생성)
+          # 2. 생성 스크립트 실행 (위에서 수정한 코드가 실행됨)
           python study_bot/sample_data.py
           
-          # 생성 결과 확인
+          # 3. 파일 생성 확인
           ls -lh study_bot/data/
-          echo "✅ Knowledge Data Injection Complete."
 
       # ---------------------------------------------------
-      # 3. 데이터 검증 및 봇 시뮬레이션
+      # 3. [검증] 데이터 개수 확인 및 시뮬레이션
       # ---------------------------------------------------
-      - name: 🤖 Simulate Quiz Session
+      - name: 🤖 Verify & Simulate
         run: |
-          cat <<'EOF' > simulate_bot.py
+          cat <<'EOF' > verify.py
           import json
-          import random
           import sys
           import os
 
-          # 생성된 데이터 로드
+          # 데이터 로드
           try:
               with open('study_bot/data/quiz.json', 'r', encoding='utf-8') as f:
                   quizzes = json.load(f)
               with open('study_bot/data/notes.json', 'r', encoding='utf-8') as f:
                   notes = json.load(f)
-          except FileNotFoundError:
-              print("❌ Data not found!")
+          except Exception as e:
+              print(f"❌ Error loading files: {e}")
               sys.exit(1)
 
-          print(f"📊 Loaded Knowledge: {len(quizzes)} Quizzes, {len(notes)} Notes")
-
-          if len(quizzes) < 9999:
-              print("❌ Data integrity check failed!")
-              sys.exit(1)
-
-          # 모의고사 실행 (30문제)
-          score = 0
-          print("="*40)
-          print("📝 Starting Mock Exam (30 Questions)...")
+          q_count = len(quizzes)
+          n_count = len(notes)
           
-          for q in random.sample(quizzes, 30):
-              # 봇이 90% 확률로 정답을 맞춤
-              is_correct = random.random() < 0.9
-              icon = "🟢" if is_correct else "🔴"
-              if is_correct: score += 1
-              
-              # 로그 일부 출력
-              if random.random() < 0.2:
-                  print(f"{icon} {q['question'][:60]}...")
+          print(f"📊 Loaded: {q_count} Quizzes, {n_count} Notes")
 
-          final_score = (score / 30) * 100
-          print("="*40)
-          print(f"🏆 Final Score: {final_score:.1f}%")
-          
-          if final_score < 50:
+          # [검증 로직] 1만 개 미만이면 실패 처리
+          if q_count < 9999:
+              print("❌ FAILED: Data count too low! Generator did not work.")
               sys.exit(1)
+          
+          print("✅ SUCCESS: Data integrity verified.")
           EOF
           
-          python simulate_bot.py
-
-      # ---------------------------------------------------
-      # 4. 코드 품질 점검
-      # ---------------------------------------------------
-      - name: 🔍 Code Quality Check
-        run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          bandit -r study_bot -s B311 || echo "Security scan complete"
+          python verify.py

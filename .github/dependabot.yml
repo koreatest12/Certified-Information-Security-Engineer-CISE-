@@ -1,0 +1,50 @@
+version: 2
+
+updates:
+  # -------------------------------------------------------------
+  # 1. GitHub Actions 워크플로우 업데이트 (가장 중요)
+  # -------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"         # 한국 시간 18:00 (UTC 09:00)
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 99  # 한 번에 최대 99개 PR 생성
+    labels:
+      - "actions"
+      - "ci-cd"
+      - "automated-update"
+
+  # -------------------------------------------------------------
+  # 2. Python 라이브러리 (pip) 업데이트
+  # -------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 99
+    # 개발 의존성도 포함하여 업데이트
+    allow:
+      - dependency-type: "all"
+    labels:
+      - "python"
+      - "dependencies"
+      - "backend"
+
+  # -------------------------------------------------------------
+  # 3. Docker 이미지 및 컨테이너 업데이트
+  # -------------------------------------------------------------
+  # 앞선 스크립트에서 생성한 docker/app 디렉토리 감지
+  - package-ecosystem: "docker"
+    directory: "/docker/app"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 99
+    labels:
+      - "docker"
+      - "infrastructure"

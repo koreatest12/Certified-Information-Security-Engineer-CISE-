@@ -1,6 +1,5 @@
 import json, random, os, datetime
 
-# (위 Python 코드 전체 내용이 여기에 들어갑니다. 편의상 핵심 로직만 삽입)
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, 'data', 'quiz.json')
@@ -11,12 +10,15 @@ def main():
     # 100문제 풀이 시뮬레이션
     score = 0
     results = []
+    # 매번 다른 문제를 풀도록 랜덤 샘플링
     for q in random.sample(quizzes, 100):
-        is_correct = random.random() < 0.8 # 80% 정답률
+        is_correct = random.random() < 0.8 # 80% 정답률 시뮬레이션
         if is_correct: score += 1
         results.append(f"- {q['question']} -> {'✅' if is_correct else '❌'}")
     
-    report = f"# 🤖 AI Exam Report\n**Score:** {score}/100\n\n## Details\n" + "\n".join(results[:10])
+    # 리포트 생성 (시간 포함)
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    report = f"# 🤖 AI Exam Report\n**Run Time:** {now}\n**Score:** {score}/100\n\n## Details\n" + "\n".join(results[:10])
     
     with open(os.path.join(base_dir, 'ai_exam_report.md'), 'w', encoding='utf-8') as f:
         f.write(report)

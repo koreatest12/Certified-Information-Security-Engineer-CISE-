@@ -7,7 +7,7 @@ def generate():
         c = random.choice(cats)
         quizzes.append({
             "id": str(uuid.uuid4())[:8],
-            "question": f"[{c}] AI 테스트용 문제 #{i}",
+            "question": f"[{c}] AI 테스트용 문제 #{i} (Time: {random.randint(1000,9999)})",
             "answer": "정답",
             "category": c,
             "options": ["정답", "오답1", "오답2"]

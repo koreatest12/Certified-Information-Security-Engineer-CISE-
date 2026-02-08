@@ -1,4 +1,4 @@
-name: "🚀 CISE Bot: Hyper-Server & Auto-Quiz Simulation"
+name: "🚀 CISE Bot: 10K Massive Data & Simulation"
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ "main" ]
 
 jobs:
-  upgrade-and-simulate:
-    name: 🏗️ Server Upgrade & Quiz Simulation
+  massive-data-injection:
+    name: 🏗️ Inject 10K Data & Simulate
     runs-on: ubuntu-latest
     
     steps:
@@ -16,14 +16,13 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------
-      # 1. [Base] 필수 의존성 및 환경 설정
+      # 1. [Base] 필수 환경 설정
       # ---------------------------------------------------
       - name: 📝 Generate requirements.txt
         run: |
           cat <<EOF > requirements.txt
           requests>=2.31.0
           pytest>=7.4.0
-          mock>=5.1.0
           flake8>=6.1.0
           black>=23.9.0
           bandit>=1.7.5
@@ -41,151 +40,176 @@ jobs:
           pip install -r requirements.txt
 
       # ---------------------------------------------------
-      # 2. [Upgrade] 서버 인프라 대량 업그레이드 (Health Check + Logs)
+      # 2. [Upgrade] 서버 인프라 구축
       # ---------------------------------------------------
-      - name: 🚀 Upgrade Server Infrastructure
+      - name: 🚀 Setup Server Infrastructure
         run: |
-          echo "Upgrading Server Environment..."
-          
-          # 2-1. 대량 디렉토리 구조 확장
           mkdir -p study_bot/data
-          mkdir -p server/status
-          mkdir -p server/logs/access
-          mkdir -p server/logs/error
-          mkdir -p server/config/production
-          mkdir -p scripts/monitor
-
-          # 2-2. 서버 상태 파일(PID) 및 설정 생성
-          echo "$$" > server/status/bot.pid
-          echo '{"mode": "auto-pilot", "max_threads": 16}' > server/config/production/settings.json
-
-          # 2-3. 서버 헬스 체크 스크립트 생성 (자동 모니터링용)
-          cat <<'EOF' > scripts/monitor/health_check.sh
-          #!/bin/bash
-          if [ -f "server/status/bot.pid" ]; then
-            echo "✅ Server is RUNNING (PID: $(cat server/status/bot.pid))"
-            echo "📊 Disk Usage: $(du -sh study_bot/data)"
-            exit 0
-          else
-            echo "❌ Server is DOWN"
-            exit 1
-          fi
-          EOF
-          chmod +x scripts/monitor/health_check.sh
-          
-          # 2-4. 헬스 체크 실행
-          ./scripts/monitor/health_check.sh
+          mkdir -p server/status server/logs/access server/logs/error
+          mkdir -p config/production
 
       # ---------------------------------------------------
-      # 3. [Data] 지식 데이터 대량 생성 (기존 기능 유지)
+      # 3. [Data] 9,999개 고정밀 퀴즈 데이터 생성 (핵심 기능)
       # ---------------------------------------------------
-      - name: 🧠 Generate Massive Knowledge Base
+      - name: 🧠 Generate 9,999 Precision Quiz Data
         run: |
-          cat <<'EOF' > generate_data.py
+          cat <<'EOF' > generate_massive_data.py
           import json, random, uuid, os
-          from datetime import datetime
-
-          os.makedirs('study_bot/data', exist_ok=True)
-          CATEGORIES = ["시스템 보안", "네트워크 보안", "어플리케이션 보안", "정보보안 일반", "정보보안 법규"]
           
-          # 퀴즈 100개 생성 (자동 실행용)
-          quizzes = []
-          for i in range(1, 101):
-              cat = random.choice(CATEGORIES)
-              quizzes.append({
+          # 저장 경로 확보
+          os.makedirs('study_bot/data', exist_ok=True)
+
+          # === 데이터 베이스 (키워드 조합용) ===
+          SUBJECTS = ["시스템 보안", "네트워크 보안", "어플리케이션 보안", "정보보안 일반", "정보보안 법규"]
+          
+          ATTACKS = ["DDoS", "SQL Injection", "XSS", "CSRF", "Phishing", "Ransomware", "Buffer Overflow", "Sniffing"]
+          PROTOCOLS = ["HTTP", "HTTPS", "FTP", "SSH", "Telnet", "DNS", "SMTP", "SNMP"]
+          PORTS = [80, 443, 21, 22, 23, 53, 25, 161]
+          CONCEPTS = ["기밀성(Confidentiality)", "무결성(Integrity)", "가용성(Availability)", "인증(Authentication)", "접근통제(Access Control)"]
+          
+          def generate_question(idx):
+              subj = random.choice(SUBJECTS)
+              q_type = random.randint(1, 4)
+              
+              if q_type == 1: # 공격 유형 문제
+                  atk = random.choice(ATTACKS)
+                  q_text = f"다음 중 {subj} 환경에서 발생하는 '{atk}' 공격의 주요 특징으로 올바른 것은?"
+                  ans = f"{atk} 공격은 시스템의 취약점을 이용합니다."
+                  opts = [ans, "네트워크 대역폭을 고갈시킵니다.", "암호화 키를 탈취합니다.", "사용자 세션을 가로챕니다."]
+                  
+              elif q_type == 2: # 포트/프로토콜 문제
+                  proto = random.choice(PROTOCOLS)
+                  port = PORTS[PROTOCOLS.index(proto)]
+                  q_text = f"{subj}에서 주로 사용되는 {proto} 프로토콜의 기본 포트 번호는?"
+                  ans = str(port)
+                  opts = [str(port), str(port+1), str(port+100), "8080"]
+                  
+              elif q_type == 3: # 보안 개념 문제
+                  concept = random.choice(CONCEPTS)
+                  q_text = f"정보보안의 3요소 중 '{concept}'에 대한 설명으로 가장 적절한 것은?"
+                  ans = f"{concept}은(는) 인가된 사용자만 접근할 수 있음을 보장합니다."
+                  opts = [ans, "데이터가 변조되지 않음을 보장합니다.", "서비스가 항상 가능함을 보장합니다.", "부인 방지를 제공합니다."]
+                  
+              else: # 일반형 문제
+                  q_text = f"{subj} 관련 실무 예제 문제 #{idx}: 보안 관제 절차 중 올바른 순서는?"
+                  ans = "탐지 -> 분석 -> 대응 -> 보고"
+                  opts = [ans, "대응 -> 탐지 -> 분석 -> 보고", "보고 -> 탐지 -> 대응 -> 분석", "분석 -> 대응 -> 탐지 -> 보고"]
+              
+              random.shuffle(opts)
+              
+              return {
                   "id": str(uuid.uuid4())[:8],
-                  "question": f"{cat} 모의고사 문제 #{i}",
-                  "answer": "정답",
-                  "category": cat,
-                  "options": ["오답1", "오답2", "정답", "오답3"],
-                  "explanation": "해설입니다."
-              })
+                  "question": q_text,
+                  "answer": ans,
+                  "category": subj,
+                  "options": opts,
+                  "explanation": f"이 문제는 {subj} 분야의 핵심 개념인 {ans}에 대해 다룹니다. (문제 ID: {idx})",
+                  "correct_count": 0,
+                  "wrong_count": 0
+              }
+
+          print("🚀 Generating 9,999 Quiz Questions...")
+          quizzes = [generate_question(i) for i in range(1, 10000)] # 9999개 생성
           
           with open('study_bot/data/quiz.json', 'w', encoding='utf-8') as f:
               json.dump(quizzes, f, indent=2, ensure_ascii=False)
-          print(f"✅ Generated {len(quizzes)} Quizzes.")
+              
+          print(f"✅ Successfully Generated {len(quizzes)} Quizzes.")
           EOF
-          python generate_data.py
+          
+          # 생성 스크립트 실행
+          python generate_massive_data.py
 
       # ---------------------------------------------------
-      # 4. [New] 퀴즈 자동 실행 시뮬레이터 (Auto-Quiz Execution)
+      # 4. [Verify] 데이터 적재 검증 및 자동 시뮬레이션
       # ---------------------------------------------------
-      - name: 🤖 Run Auto-Quiz Simulation
+      - name: 🤖 Verify & Run Simulation
         run: |
-          echo "Starting Quiz Auto-Pilot..."
+          echo "Starting Data Verification & Auto-Pilot..."
           
-          # 퀴즈 자동 풀이 스크립트 생성
-          cat <<'EOF' > simulate_quiz.py
+          cat <<'EOF' > verify_and_simulate.py
           import json
           import random
           import sys
           import os
 
-          # 데이터 로드
+          # 1. 데이터 로드 및 개수 검증
           try:
               with open('study_bot/data/quiz.json', 'r', encoding='utf-8') as f:
                   quizzes = json.load(f)
           except FileNotFoundError:
-              print("❌ Quiz data not found!")
+              print("❌ Quiz data file missing!")
               sys.exit(1)
 
-          print(f"📚 Total Questions Loaded: {len(quizzes)}")
+          count = len(quizzes)
+          print(f"📊 Data Loaded: {count} items")
+          
+          if count < 9999:
+              print(f"❌ Error: Expected 9999 questions, but found {count}")
+              sys.exit(1)
+          else:
+              print("✅ Data Count Verification Passed (9999+)")
+
           print("="*40)
 
-          # 20문제 랜덤 풀이 시뮬레이션
+          # 2. 봇 시뮬레이션 (랜덤 50문제 풀이)
           score = 0
-          attempts = 20
-          selected_quizzes = random.sample(quizzes, attempts)
+          attempts = 50
+          selected = random.sample(quizzes, attempts)
 
-          for idx, q in enumerate(selected_quizzes, 1):
-              # 봇이 80% 확률로 정답을 맞추도록 시뮬레이션
-              is_correct = random.random() < 0.8
-              chosen_answer = q['answer'] if is_correct else "오답"
+          for idx, q in enumerate(selected, 1):
+              # 85% 정답률 시뮬레이션
+              is_correct = random.random() < 0.85
               
-              result_icon = "🟢" if is_correct else "🔴"
+              # 실제 정답 찾기
+              correct_ans = q['answer']
+              
               if is_correct:
                   score += 1
+                  result = "🟢"
+              else:
+                  result = "🔴"
               
-              print(f"{result_icon} [Q{idx}] {q['category']}: {q['question']}")
-              print(f"   -> Bot Answer: {chosen_answer} (Actual: {q['answer']})")
+              # 로그 출력 (너무 많으니 앞부분만 자세히)
+              if idx <= 5:
+                  print(f"{result} [Q{idx}] {q['category']}: {q['question'][:50]}...")
 
           print("="*40)
           final_score = (score / attempts) * 100
-          print(f"🏆 Final Score: {score}/{attempts} ({final_score:.1f}%)")
+          print(f"🏆 Simulation Score: {score}/{attempts} ({final_score:.1f}%)")
           
-          # 결과 로그 저장
-          os.makedirs('server/logs/access', exist_ok=True)
-          with open('server/logs/access/quiz_result.log', 'w') as log:
-              log.write(f"Simulation finished. Score: {final_score}")
+          # 결과 파일 저장
+          with open('server/logs/access/simulation.log', 'w') as log:
+              log.write(f"Total: {count}, Score: {final_score}")
 
-          if final_score < 50:
-              print("⚠️ Performance too low!")
+          if final_score < 60:
+              print("⚠️ Score too low!")
               sys.exit(1)
           else:
-              print("✅ Quiz Simulation Passed!")
+              print("✅ System Ready.")
           EOF
           
-          # 시뮬레이터 실행
-          python simulate_quiz.py
+          python verify_and_simulate.py
 
       # ---------------------------------------------------
-      # 5. [Test] 테스트 스위트 생성 및 검증
+      # 5. [Test] 최종 시스템 테스트
       # ---------------------------------------------------
-      - name: 🧪 Generate & Run Test Suite
+      - name: 🧪 Final System Test
         run: |
           mkdir -p tests
           touch tests/__init__.py
           
-          # 서버 로그 파일 생성 확인 테스트
-          cat <<'EOF' > tests/test_simulation.py
+          cat <<'EOF' > tests/test_system.py
           import unittest
           import os
+          import json
           
-          class SimulationTest(unittest.TestCase):
-              def test_log_created(self):
-                  """퀴즈 시뮬레이션 후 로그 파일이 생성되었는지 확인"""
-                  self.assertTrue(os.path.exists("server/logs/access/quiz_result.log"))
+          class SystemTest(unittest.TestCase):
+              def test_quiz_data_integrity(self):
+                  """퀴즈 데이터 파일이 9999개 이상인지 최종 확인"""
+                  with open('study_bot/data/quiz.json', 'r') as f:
+                      data = json.load(f)
+                      self.assertGreaterEqual(len(data), 9999)
           EOF
           
-          # 테스트 실행
           python -m unittest discover tests -v

@@ -1,6 +1,11 @@
-name: "🚀 CISE Bot: AI Quiz Execution & Report"
+name: "🚀 CISE Bot: AI Quiz Execution & Report (Every 20m)"
 
 on:
+  # ---------------------------------------------------
+  # 🕒 [New] 20분마다 자동 실행 스케줄러 추가
+  # ---------------------------------------------------
+  schedule:
+    - cron: "*/20 * * * *"
   push:
     branches: [ "main", "claude/**" ]
   workflow_dispatch:
@@ -10,7 +15,7 @@ permissions:
 
 jobs:
   ai-simulation-pipeline:
-    name: 🤖 AI Generate & Solve
+    name: 🤖 AI Generate & Solve (20m Loop)
     runs-on: ubuntu-latest
     
     steps:
@@ -25,12 +30,13 @@ jobs:
           python-version: '3.12'
 
       # ---------------------------------------------------
-      # 1. [생성] 문제은행 10,000개 생성 (기존 로직 유지)
+      # 1. [생성] 문제은행 10,000개 생성
       # ---------------------------------------------------
       - name: 🏭 Write & Run Generator
         run: |
           mkdir -p study_bot
-          # (간소화된 생성기 코드 - 실제로는 이전 턴의 전체 코드를 사용합니다)
+          
+          # 문제 생성기 스크립트 작성
           cat <<'EOF' > study_bot/generate_problem_bank.py
           import json, os, random, uuid
           def generate():
@@ -41,7 +47,7 @@ jobs:
                   c = random.choice(cats)
                   quizzes.append({
                       "id": str(uuid.uuid4())[:8],
-                      "question": f"[{c}] AI 테스트용 문제 #{i}",
+                      "question": f"[{c}] AI 테스트용 문제 #{i} (Time: {random.randint(1000,9999)})",
                       "answer": "정답",
                       "category": c,
                       "options": ["정답", "오답1", "오답2"]
@@ -52,18 +58,18 @@ jobs:
           if __name__ == "__main__": generate()
           EOF
           
+          # 생성기 실행
           python study_bot/generate_problem_bank.py
 
       # ---------------------------------------------------
-      # 2. [실행] AI 퀴즈 솔버 작성 및 실행 (New!)
+      # 2. [실행] AI 퀴즈 솔버 작성 및 실행
       # ---------------------------------------------------
       - name: 🤖 Run AI Quiz Solver
         run: |
-          # 위에서 제공한 AI Solver 코드를 파일로 생성
+          # AI 솔버 스크립트 작성
           cat <<'EOF' > study_bot/ai_solver.py
           import json, random, os, datetime
           
-          # (위 Python 코드 전체 내용이 여기에 들어갑니다. 편의상 핵심 로직만 삽입)
           def main():
               base_dir = os.path.dirname(os.path.abspath(__file__))
               data_path = os.path.join(base_dir, 'data', 'quiz.json')
@@ -74,12 +80,15 @@ jobs:
               # 100문제 풀이 시뮬레이션
               score = 0
               results = []
+              # 매번 다른 문제를 풀도록 랜덤 샘플링
               for q in random.sample(quizzes, 100):
-                  is_correct = random.random() < 0.8 # 80% 정답률
+                  is_correct = random.random() < 0.8 # 80% 정답률 시뮬레이션
                   if is_correct: score += 1
                   results.append(f"- {q['question']} -> {'✅' if is_correct else '❌'}")
               
-              report = f"# 🤖 AI Exam Report\n**Score:** {score}/100\n\n## Details\n" + "\n".join(results[:10])
+              # 리포트 생성 (시간 포함)
+              now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+              report = f"# 🤖 AI Exam Report\n**Run Time:** {now}\n**Score:** {score}/100\n\n## Details\n" + "\n".join(results[:10])
               
               with open(os.path.join(base_dir, 'ai_exam_report.md'), 'w', encoding='utf-8') as f:
                   f.write(report)
@@ -91,7 +100,7 @@ jobs:
           # AI 솔버 실행
           python study_bot/ai_solver.py
           
-          # 생성된 리포트 내용 출력 (로그 확인용)
+          # 로그 확인
           cat study_bot/ai_exam_report.md
 
       # ---------------------------------------------------
@@ -102,18 +111,20 @@ jobs:
           git config --global user.name "AI Quiz Bot"
           git config --global user.email "bot@ai.cise"
           
-          # 1. 생성기 및 솔버 스크립트 추가
+          # 1. 파일 추가
           git add study_bot/generate_problem_bank.py study_bot/ai_solver.py
-          
-          # 2. 데이터 파일 및 리포트 강제 추가 (-f)
           git add -f study_bot/data/quiz.json
           git add -f study_bot/ai_exam_report.md
           
-          # 3. 커밋 및 푸시
+          # 2. 변경사항 확인 및 커밋
           if git diff --staged --quiet; then
             echo "No changes."
           else
-            git commit -m "feat: AI Execution - Generated 10k Data & Exam Report"
+            git commit -m "feat: AI Execution (20m Schedule) - Updated Data & Report"
+            
+            # [중요] 20분마다 실행되므로 충돌 방지를 위해 pull --rebase 수행
+            git pull origin HEAD:${{ github.ref_name }} --rebase || echo "Rebase skipped"
+            
             git push origin HEAD:${{ github.ref_name }}
             echo "✅ Successfully pushed AI analysis report."
           fi

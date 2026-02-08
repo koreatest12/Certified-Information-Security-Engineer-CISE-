@@ -1,24 +1,64 @@
-name: CISE Study Bot CI
+name: "🛡️ CISE Bot Ultimate CI Pipeline"
 
 on:
   push:
-    branches: [main, claude/*]
+    branches: [ "main", "claude/**" ]
     paths:
       - 'study_bot/**'
-      - '.github/workflows/study-bot-ci.yml'
+      - '.github/workflows/**'
   pull_request:
-    branches: [main]
-    paths:
-      - 'study_bot/**'
-      - '.github/workflows/study-bot-ci.yml'
+    branches: [ "main" ]
 
 jobs:
+  # ---------------------------------------------------
+  # 1. 품질 및 보안 점검 (Quality & Security)
+  # ---------------------------------------------------
+  quality-check:
+    name: 🔍 Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyflakes flake8 black bandit
+
+      - name: 1️⃣ Syntax Check (Flake8)
+        # E501: 줄 길이 제한 무시 (긴 문자열 허용)
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings.
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: 2️⃣ Code Formatting Check (Black)
+        # 코드가 표준 포맷(Black)을 따르는지 검사
+        run: black --check .
+
+      - name: 3️⃣ Security Scan (Bandit)
+        # 보안 기사 봇이므로 보안 취약점 점검 필수
+        # B311: 랜덤 모듈 사용 경고 무시 (퀴즈 랜덤 출제용)
+        run: bandit -r study_bot -s B311
+
+  # ---------------------------------------------------
+  # 2. 통합 테스트 (Matrix Testing)
+  # ---------------------------------------------------
   test:
-    name: Run Tests
+    name: 🧪 Run Unit Tests
+    needs: quality-check # 품질 점검이 통과해야 실행
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.8', '3.10', '3.12']
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout repository
@@ -29,41 +69,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Display Python version
-        run: python --version
-
-      - name: Run syntax check
-        run: python -m py_compile study_bot/main.py
-
-      - name: Compile all modules
+      - name: Install Dependencies
         run: |
-          python -m py_compile study_bot/models.py
-          python -m py_compile study_bot/storage.py
-          python -m py_compile study_bot/bot.py
-          python -m py_compile study_bot/quiz.py
-          python -m py_compile study_bot/sample_data.py
+          python -m pip install --upgrade pip
+          # 필요한 경우 requirements.txt 설치
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run automated tests
-        run: python study_bot/test_bot.py
+      - name: 📂 Create Data Directory
+        run: mkdir -p study_bot/data
 
-  lint:
-    name: Code Quality
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Check syntax (pyflakes)
-        run: |
-          pip install pyflakes
-          pyflakes study_bot/models.py
-          pyflakes study_bot/storage.py
-          pyflakes study_bot/quiz.py
-          pyflakes study_bot/sample_data.py
-          pyflakes study_bot/test_bot.py
+      - name: 🧪 Execute Tests
+        # unittest 자동 발견 모드로 실행
+        run: python -m unittest discover tests

@@ -1,110 +1,166 @@
-name: "🚀 CISE Bot: Problem Bank Generator & Auto-Commit"
+name: "🚀 CISE Bot: Problem Bank Force Injection"
 
 on:
   push:
     branches: [ "main", "claude/**" ]
-  workflow_dispatch: # 수동 실행 가능
+  workflow_dispatch: # 수동 실행 버튼
 
-# 저장소에 쓰기 권한 부여 (필수)
+# 저장소 쓰기 권한 필수
 permissions:
   contents: write
 
 jobs:
-  generate-and-commit:
-    name: 🏭 Generate & Persist Data
+  generate-inject-persist:
+    name: 🏗️ Generate 10K & Force Push
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
-          
+          # 푸시를 위해 현재 브랜치 정보를 정확히 가져옴
+          ref: ${{ github.ref_name }}
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      # 1. 문제은행 엔진 생성 (파일이 없을 경우 대비)
-      - name: 📝 Create Generator Script
+      # ---------------------------------------------------
+      # 1. [엔진] 문제은행 생성기(Generator) 작성
+      # ---------------------------------------------------
+      - name: 📝 Write Problem Bank Generator
         run: |
           mkdir -p study_bot
-          # (위에서 제공한 파이썬 코드를 여기에 복사함. 실제로는 파일이 있다고 가정하고 실행하거나, 
-          # 아래처럼 echo로 생성해도 됨. 여기서는 파일이 있다고 가정하고 실행)
-          echo "Checking generator script..."
-
-      # 2. 문제은행 데이터 대량 생성 실행
-      - name: 🏭 Run Problem Bank Generator
-        run: |
-          # 파이썬 경로 설정
-          export PYTHONPATH=$PYTHONPATH:.
           
-          # 위 1번 단계의 코드를 실제로 study_bot/generate_problem_bank.py 파일로 생성
           cat <<'EOF' > study_bot/generate_problem_bank.py
-          import json, os, random, uuid, datetime
-          
-          # (위의 긴 Python 코드가 여기에 들어갑니다. 공간 절약을 위해 핵심 로직만 요약하여 실행)
-          # 실제로는 위 1번 코드 전체를 복사해서 이 위치에 넣어야 완벽합니다.
-          # 하지만 사용자가 파일을 직접 올리기 힘들 수 있으므로, 여기서 간소화된 버전으로 파일을 만듭니다.
-          
-          KNOWLEDGE_DB = { "SYSTEM": ["chmod", "chown"], "NETWORK": ["Syn Flood", "Spoofing"] }
-          def generate():
-              data_dir = "study_bot/data"
-              os.makedirs(data_dir, exist_ok=True)
+          import json
+          import os
+          import random
+          import uuid
+          from datetime import datetime
+
+          # 데이터 저장 경로
+          BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+          DATA_DIR = os.path.join(BASE_DIR, 'data')
+          os.makedirs(DATA_DIR, exist_ok=True)
+
+          # === 정보보안기사 지식 베이스 (Knowledge Base) ===
+          DB = {
+              "SYSTEM": {
+                  "Topics": ["Linux 권한", "Windows 인증", "로그 분석", "RAID", "Inode", "SetUID"],
+                  "Attacks": ["Buffer Overflow", "Race Condition", "Format String", "Rootkit"]
+              },
+              "NETWORK": {
+                  "Topics": ["OSI 7 Layer", "TCP/IP", "VPN", "Firewall", "IDS/IPS", "NAC"],
+                  "Attacks": ["Syn Flooding", "Spoofing", "Sniffing", "Session Hijacking", "DDoS"]
+              },
+              "APP": {
+                  "Topics": ["SDLC", "DB 보안", "암호화 알고리즘", "전자서명", "PKI"],
+                  "Attacks": ["SQL Injection", "XSS", "CSRF", "Web Shell", "File Upload"]
+              },
+              "GENERAL": {
+                  "Topics": ["접근통제 모델(MAC/DAC/RBAC)", "보안 3요소", "재해복구(DRS)", "BCP"],
+                  "Attacks": ["Social Engineering", "APT", "Ransomware"]
+              },
+              "LAW": {
+                  "Topics": ["정보통신망법", "개인정보보호법", "기반보호법", "ISMS-P 인증", "CISO 지정"],
+                  "Attacks": ["Compliance 위반", "개인정보 유출"]
+              }
+          }
+
+          def generate_10k_bank():
+              print(f"🏭 Generating 10,000 Problem Bank Items in {DATA_DIR}...")
+              
               quizzes = []
+              # 10,000 문제 생성
               for i in range(1, 10001):
-                  q_type = random.choice(list(KNOWLEDGE_DB.keys()))
-                  item = random.choice(KNOWLEDGE_DB[q_type])
-                  quizzes.append({
-                      "id": str(uuid.uuid4())[:8],
-                      "question": f"[{q_type}] {item} 관련 정보보안기사 예상문제 #{i}",
-                      "answer": "정답",
-                      "category": q_type,
-                      "options": ["정답", "오답1", "오답2", "오답3"],
-                      "correct_count": 0
-                  })
-              
-              with open(os.path.join(data_dir, "quiz.json"), "w", encoding="utf-8") as f:
-                  json.dump(quizzes, f, indent=2, ensure_ascii=False)
-              
-              # 노트 생성
-              notes = [{"id": "1", "title": "Note", "content": "content"}]
-              with open(os.path.join(data_dir, "notes.json"), "w", encoding="utf-8") as f:
-                  json.dump(notes, f, indent=2, ensure_ascii=False)
+                  cat = random.choice(list(DB.keys()))
+                  topic = random.choice(DB[cat]["Topics"])
+                  attack = random.choice(DB[cat]["Attacks"])
                   
-              print(f"Generated {len(quizzes)} items.")
+                  q = {
+                      "id": str(uuid.uuid4())[:8],
+                      "question": f"[{cat}] {topic} 환경에서 발생하는 '{attack}' 공격의 대응 방안으로 적절한 것은? (문제은행 #{i})",
+                      "answer": "보안 설정 강화 및 최신 패치 적용",
+                      "category": cat,
+                      "options": ["보안 설정 강화", "시스템 재부팅", "로그 삭제", "네트워크 차단"],
+                      "explanation": f"{attack} 공격은 {topic}의 취약점을 이용하므로 근본적인 패치가 필요합니다.",
+                      "correct_count": 0,
+                      "wrong_count": 0
+                  }
+                  quizzes.append(q)
+
+              # 퀴즈 파일 저장
+              with open(os.path.join(DATA_DIR, 'quiz.json'), 'w', encoding='utf-8') as f:
+                  json.dump(quizzes, f, indent=2, ensure_ascii=False)
+
+              # 노트 1,000개 생성
+              notes = []
+              for i in range(1, 1001):
+                  cat = random.choice(list(DB.keys()))
+                  notes.append({
+                      "id": str(uuid.uuid4())[:8],
+                      "title": f"[{cat}] 기출 핵심 요약 #{i}",
+                      "category": cat,
+                      "content": f"{cat} 과목 필수 암기 사항입니다.",
+                      "importance": random.randint(3, 5),
+                      "created_at": datetime.now().isoformat(),
+                      "is_completed": False
+                  })
+
+              # 노트 파일 저장
+              with open(os.path.join(DATA_DIR, 'notes.json'), 'w', encoding='utf-8') as f:
+                  json.dump(notes, f, indent=2, ensure_ascii=False)
+
+              print(f"✅ Generated {len(quizzes)} Quizzes and {len(notes)} Notes.")
 
           if __name__ == "__main__":
-              generate()
+              generate_10k_bank()
           EOF
-          
-          # 생성기 실행
-          python study_bot/generate_problem_bank.py
 
-      # 3. [핵심] 생성된 데이터를 Git에 반영 (Commit & Push)
-      - name: 💾 Commit & Push Generated Data
+      # ---------------------------------------------------
+      # 2. [실행] 데이터 생성
+      # ---------------------------------------------------
+      - name: 🏭 Run Generator
         run: |
-          # Git 유저 설정
-          git config --global user.name "CISE Bot Generator"
+          python study_bot/generate_problem_bank.py
+          ls -lh study_bot/data/
+
+      # ---------------------------------------------------
+      # 3. [Fix] 강제 커밋 및 푸시 (핵심 해결 단계)
+      # ---------------------------------------------------
+      - name: 💾 Force Add & Push
+        run: |
+          # Git 사용자 설정
+          git config --global user.name "Problem Bank Bot"
           git config --global user.email "bot@cise.system"
           
-          # 변경사항 확인
+          echo "Status before add:"
           git status
           
-          # 데이터 폴더 추가
-          git add study_bot/data/quiz.json study_bot/data/notes.json study_bot/generate_problem_bank.py
+          # 1. 생성기 스크립트 추가
+          git add study_bot/generate_problem_bank.py
           
-          # 변경사항이 있을 때만 커밋 및 푸시
+          # 2. [핵심] 데이터 파일 강제 추가 (-f 옵션 사용)
+          # .gitignore에 의해 무시되는 파일을 강제로 추적하게 함
+          git add -f study_bot/data/quiz.json study_bot/data/notes.json
+          
+          echo "Status after force add:"
+          git status
+          
+          # 3. 커밋 및 푸시
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "feat: Auto-generate 10,000 Problem Bank Data"
-            git push origin HEAD:${{ github.ref }}
-            echo "✅ Successfully pushed massive data to repository."
+            git commit -m "feat: Force inject 10,000 Problem Bank items (Bypass gitignore)"
+            git push origin HEAD:${{ github.ref_name }}
+            echo "✅ Successfully forced data into repository."
           fi
 
-      # 4. 데이터 검증
-      - name: 📊 Verify Data
+      # ---------------------------------------------------
+      # 4. [검증] 데이터 무결성 확인
+      # ---------------------------------------------------
+      - name: 📊 Final Verification
         run: |
-          ls -lh study_bot/data/
-          python -c "import json; f=open('study_bot/data/quiz.json'); print(f'Quiz Count: {len(json.load(f))}')"
+          python -c "import json; f=open('study_bot/data/quiz.json'); print(f'Total Quizzes: {len(json.load(f))}')"

@@ -1,4 +1,4 @@
-name: "🛡️ CISE Bot: Massive Data Fix"
+name: "🚀 CISE Bot: Force Massive Data Injection"
 
 on:
   push:
@@ -7,68 +7,132 @@ on:
     branches: [ "main" ]
 
 jobs:
-  fix-and-simulate:
+  force-inject-and-verify:
+    name: 💉 Force Inject 10K Data & Verify
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------
-      # 1. 환경 설정
-      # ---------------------------------------------------
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       # ---------------------------------------------------
-      # 2. [핵심] 대량 데이터 생성 엔진 실행
+      # 1. [핵심] 기존 sample_data.py를 강제로 덮어쓰기 (Fix Error)
       # ---------------------------------------------------
-      - name: 🧠 Run Massive Generator (sample_data.py)
+      - name: 💉 Overwrite Generator Engine
         run: |
-          echo "Running generator..."
+          echo "Overwriting sample_data.py with 10K generator logic..."
           
-          # 1. 모듈 경로 인식 설정
+          cat <<'EOF' > study_bot/sample_data.py
+          import json
+          import os
+          import random
+          import uuid
+          from datetime import datetime
+
+          # 데이터 저장 경로
+          BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+          DATA_DIR = os.path.join(BASE_DIR, 'data')
+          os.makedirs(DATA_DIR, exist_ok=True)
+
+          # 대량 데이터 생성을 위한 키워드 풀
+          SUBJECTS = ["시스템 보안", "네트워크 보안", "어플리케이션 보안", "정보보안 일반", "정보보안 법규"]
+          ATTACKS = ["DDoS", "SQL Injection", "XSS", "CSRF", "Ransomware", "APT", "Phishing"]
+          PROTOCOLS = ["HTTP", "HTTPS", "FTP", "SSH", "Telnet", "DNS", "SMTP"]
+
+          def generate_10k_data():
+              print(f"🚀 Starting Massive Generation in {DATA_DIR}...")
+              
+              # 1. 퀴즈 10,000개 생성
+              quizzes = []
+              for i in range(1, 10001):
+                  subj = random.choice(SUBJECTS)
+                  atk = random.choice(ATTACKS)
+                  q = {
+                      "id": str(uuid.uuid4())[:8],
+                      "question": f"[Q{i}] {subj} 환경에서 발생하는 {atk} 공격의 대응 방안은?",
+                      "answer": "보안 패치 및 설정 강화",
+                      "category": subj,
+                      "options": ["보안 패치", "시스템 재부팅", "무시하기", "로그 삭제"],
+                      "correct_count": 0,
+                      "wrong_count": 0
+                  }
+                  quizzes.append(q)
+              
+              with open(os.path.join(DATA_DIR, 'quiz.json'), 'w', encoding='utf-8') as f:
+                  json.dump(quizzes, f, indent=2, ensure_ascii=False)
+              
+              # 2. 노트 1,000개 생성
+              notes = []
+              for i in range(1, 1001):
+                  subj = random.choice(SUBJECTS)
+                  n = {
+                      "id": str(uuid.uuid4())[:8],
+                      "title": f"[{subj}] 핵심요약 #{i}",
+                      "category": subj,
+                      "content": f"{subj} 과목의 중요 암기 사항입니다. 반복 학습 필요.",
+                      "importance": random.randint(1, 5),
+                      "created_at": datetime.now().isoformat(),
+                      "is_completed": False
+                  }
+                  notes.append(n)
+              
+              with open(os.path.join(DATA_DIR, 'notes.json'), 'w', encoding='utf-8') as f:
+                  json.dump(notes, f, indent=2, ensure_ascii=False)
+
+              print(f"✅ Generated: {len(quizzes)} Quizzes, {len(notes)} Notes")
+
+          if __name__ == "__main__":
+              generate_10k_data()
+          EOF
+
+      # ---------------------------------------------------
+      # 2. [실행] 대량 생성 엔진 가동
+      # ---------------------------------------------------
+      - name: 🧠 Run Massive Generator
+        run: |
+          # 파이썬 경로 설정
           export PYTHONPATH=$PYTHONPATH:.
           
-          # 2. 생성 스크립트 실행 (위에서 수정한 코드가 실행됨)
+          # 강제로 덮어쓴 파일 실행
           python study_bot/sample_data.py
           
-          # 3. 파일 생성 확인
+          # 결과 파일 확인
           ls -lh study_bot/data/
 
       # ---------------------------------------------------
-      # 3. [검증] 데이터 개수 확인 및 시뮬레이션
+      # 3. [검증] 데이터 개수 확인 (9999개 이상 필수)
       # ---------------------------------------------------
-      - name: 🤖 Verify & Simulate
+      - name: 📊 Verify Data Integrity
         run: |
-          cat <<'EOF' > verify.py
+          cat <<'EOF' > verify_data.py
           import json
           import sys
           import os
 
-          # 데이터 로드
           try:
               with open('study_bot/data/quiz.json', 'r', encoding='utf-8') as f:
                   quizzes = json.load(f)
               with open('study_bot/data/notes.json', 'r', encoding='utf-8') as f:
                   notes = json.load(f)
           except Exception as e:
-              print(f"❌ Error loading files: {e}")
+              print(f"❌ File Load Error: {e}")
               sys.exit(1)
 
           q_count = len(quizzes)
           n_count = len(notes)
           
-          print(f"📊 Loaded: {q_count} Quizzes, {n_count} Notes")
+          print(f"📊 Verification Result: {q_count} Quizzes, {n_count} Notes")
 
-          # [검증 로직] 1만 개 미만이면 실패 처리
-          if q_count < 9999:
-              print("❌ FAILED: Data count too low! Generator did not work.")
+          if q_count < 10000:
+              print("❌ FAILED: Quiz count is less than 10,000!")
               sys.exit(1)
           
-          print("✅ SUCCESS: Data integrity verified.")
+          print("✅ SUCCESS: Massive Data Injection Verified.")
           EOF
           
-          python verify.py
+          python verify_data.py

@@ -1,0 +1,88 @@
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+const server = new Server(
+  {
+    name: "money-mcp",
+    version: "1.0.0"
+  },
+  {
+    capabilities: {
+      tools: {}
+    }
+  }
+);
+
+/* =========================
+   TOOL LIST
+========================= */
+server.setRequestHandler("tools/list", async () => ({
+  tools: [
+    {
+      name: "money_calculator",
+      description: "Perform money calculation (add, subtract, multiply, divide, tax, discount, exchange)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          operation: { type: "string" },
+          amount1: { type: "number" },
+          amount2: { type: "number" },
+          rate: { type: "number" }
+        },
+        required: ["operation", "amount1"]
+      }
+    }
+  ]
+}));
+
+/* =========================
+   TOOL CALL
+========================= */
+server.setRequestHandler("tools/call", async (req) => {
+  const { operation, amount1, amount2, rate } = req.params.arguments;
+
+  let result;
+
+  switch (operation) {
+    case "add":
+      result = amount1 + amount2;
+      break;
+
+    case "subtract":
+      result = amount1 - amount2;
+      break;
+
+    case "multiply":
+      result = amount1 * amount2;
+      break;
+
+    case "divide":
+      result = amount1 / amount2;
+      break;
+
+    case "tax":
+      result = amount1 + (amount1 * (rate / 100));
+      break;
+
+    case "discount":
+      result = amount1 - (amount1 * (rate / 100));
+      break;
+
+    case "exchange":
+      result = amount1 * rate;
+      break;
+
+    default:
+      result = "Invalid operation";
+  }
+
+  return {
+    content: [{ type: "text", text: `결과: ${result.toLocaleString()}` }]
+  };
+});
+
+/* =========================
+   START SERVER
+========================= */
+const transport = new StdioServerTransport();
+await server.connect(transport);

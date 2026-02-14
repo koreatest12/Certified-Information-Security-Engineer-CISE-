@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem", "C:\\Users\\kwonn"],
+      "env": {
+        "ROOT": "C:\\Users\\kwonn"
+      }
+    },
+    "money-mcp": {
+      "command": "node",
+      "args": ["C:\\Users\\kwonn\\money-mcp\\index.js"]
+    }
+  }
+}

@@ -42,7 +42,7 @@ jobs:
       failure-details: ${{ steps.summary.outputs.failure_details }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # -------------------------------------------------------------
       # 1. CPU Check

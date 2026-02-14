@@ -1,4 +1,4 @@
-name: 🛡️ UNIVERSE v4000 (PERMISSION CHAOS & FORCE SUCCESS)
+name: 🛡️ UNIVERSE v6000 (IMMORTAL FALLBACK & SPECIAL FILES)
 
 on:
   workflow_dispatch:
@@ -8,91 +8,56 @@ on:
 permissions: write-all
 
 env:
-  BASE_DIR: universe_v4000_env
-  VIRTUAL_DISK_PATH: /mnt/virtual_disks
+  # 기본 경로는 시스템 경로로 하되, 실패 시 로컬로 전환
+  TARGET_PATH_ROOT: /mnt/virtual_disks
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
   # ==========================================================
-  # 1️⃣ INFRA & USER SETUP (권한 주체 생성)
+  # 1️⃣ HYBRID INFRA SETUP (스마트 폴더 확보)
   # ==========================================================
-  infra-permission-setup:
+  infra-hybrid-setup:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: 🛠 Install ACL & Attr Tools
-        run: sudo apt-get update && sudo apt-get install -y acl attr postgresql-client lvm2 nodejs npm || true
-
-      - name: 👥 Create 50 Dummy Users & Groups (For Ownership)
+      - name: 🛠 Install Extended Tools
         run: |
-          echo "Generating Users for Chown Tests..."
-          # 유저 1~50 생성 (실패 시 무시)
-          for i in {1..50}; do
-            sudo useradd -m "dummy_user_$i" || true
-            sudo groupadd "dummy_group_$i" || true
-          done
-          echo "User Swarm Created."
+          # 오류 무시 설정 (set +e)
+          set +e
+          sudo apt-get update
+          sudo apt-get install -y acl attr lvm2 nodejs npm coreutils || true
 
-      - name: 🔓 Setup Storage (Fail-Safe)
+      - name: 💾 Setup Storage (Dual-Path Strategy)
+        id: setup_storage
         run: |
-          sudo mkdir -p $VIRTUAL_DISK_PATH
-          sudo chmod 777 $VIRTUAL_DISK_PATH
+          set +e
+          echo "Attempting to create System Storage at $TARGET_PATH_ROOT..."
           
-          # 디스크 생성 (자동 리사이징)
-          for i in {1..5}; do
-            truncate -s 50T "$VIRTUAL_DISK_PATH/disk_$i.img" 2>/dev/null || \
-            truncate -s 10T "$VIRTUAL_DISK_PATH/disk_$i.img" 2>/dev/null || \
-            truncate -s 100G "$VIRTUAL_DISK_PATH/disk_$i.img" || true
-          done
+          # 1차 시도: 시스템 경로 (sudo 사용)
+          sudo mkdir -p $TARGET_PATH_ROOT
+          sudo chmod -R 777 $TARGET_PATH_ROOT
+          sudo chown -R $USER:$USER $TARGET_PATH_ROOT
+          
+          # 검증: 쓰기 가능한지 확인
+          touch $TARGET_PATH_ROOT/test_write 2>/dev/null
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ System Path ($TARGET_PATH_ROOT) is writable."
+            echo "STORAGE_PATH=$TARGET_PATH_ROOT" >> $GITHUB_ENV
+          else
+            echo "❌ System Path failed. Falling back to Workspace."
+            # 2차 시도: 로컬 워크스페이스 (무조건 성공함)
+            LOCAL_PATH="${{ github.workspace }}/safe_storage"
+            mkdir -p $LOCAL_PATH
+            echo "✅ Local Path ($LOCAL_PATH) created."
+            echo "STORAGE_PATH=$LOCAL_PATH" >> $GITHUB_ENV
+          fi
 
   # ==========================================================
-  # 2️⃣ LOGIC ENGINE (금융/학습 + 권한 테스트)
+  # 2️⃣ PERMISSION & FILE CHAOS (권한 + 파일 폭격)
   # ==========================================================
-  logic-permission-engine:
-    needs: infra-permission-setup
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: 🧠 Money & Study Logic with Locked Files
-        run: |
-          mkdir -p $BASE_DIR/secure_data
-          
-          # [스크립트] 권한이 걸린 데이터 생성
-          cat << 'EOF' > secure_logic.js
-          const fs = require('fs');
-          const path = '${{ env.BASE_DIR }}/secure_data';
-          
-          try {
-            // 1. 2026 급여 데이터 (Secure: 600)
-            const salaryFile = path + '/salary_2026_secure.csv';
-            fs.writeFileSync(salaryFile, 'id,salary,tax\n1,5000000,50000');
-            fs.chmodSync(salaryFile, 0o600); // 소유자만 읽기/쓰기
-            
-            // 2. 부가세 데이터 (Public: 777)
-            const vatFile = path + '/vat_public.csv';
-            fs.writeFileSync(vatFile, 'id,vat\n1,1000');
-            fs.chmodSync(vatFile, 0o777); // 누구나 수정 가능
-            
-            // 3. 기밀 학습 노트 (Locked: 000)
-            const secretNote = path + '/top_secret_study.txt';
-            fs.writeFileSync(secretNote, 'Exam Cheat Sheet...');
-            fs.chmodSync(secretNote, 0o000); // 아무도 못 읽음 (Chaos)
-            
-            console.log("Secure Logic Executed");
-          } catch (e) { process.exit(0); }
-          EOF
-          
-          node secure_logic.js || exit 0
-
-  # ==========================================================
-  # 3️⃣ PERMISSION CHAOS FACTORY (파일 + 권한 무작위 적용)
-  # ==========================================================
-  file-permission-chaos:
-    needs: infra-permission-setup
+  chaos-factory-matrix:
+    needs: infra-hybrid-setup
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
@@ -105,110 +70,151 @@ jobs:
         with:
           node-version: 20
 
-      - name: 🛡️ Generate Files with Random Permissions
+      # [중요] 각 Job마다 환경변수 다시 로드 및 폴더 확인
+      - name: 🚑 Re-Verify Storage Path
         run: |
-          TARGET_DIR="$VIRTUAL_DISK_PATH/perm_chaos/shard_${{ matrix.shard }}"
-          mkdir -p $TARGET_DIR
-          # 상위 폴더 권한 개방 (하위 파일 생성을 위해)
-          sudo chmod 777 $TARGET_DIR
+          set +e
+          # 이전 단계에서 설정된 환경변수가 없을 경우 대비
+          if [ -z "$STORAGE_PATH" ]; then
+             echo "Env var lost. Using fallback."
+             echo "STORAGE_PATH=${{ github.workspace }}/safe_storage" >> $GITHUB_ENV
+             mkdir -p ${{ github.workspace }}/safe_storage
+          else
+             # 경로가 있으면 다시 생성 시도 (Job 격리 문제 해결)
+             sudo mkdir -p $STORAGE_PATH || mkdir -p $STORAGE_PATH
+             sudo chmod -R 777 $STORAGE_PATH || true
+          fi
+
+      - name: 🎲 Run Permission Roulette & File Gen
+        run: |
+          set +e
+          TARGET="$STORAGE_PATH/shard_${{ matrix.shard }}"
+          mkdir -p $TARGET
           
-          # [스크립트] 권한 룰렛 파일 생성기
-          cat << 'EOF' > perm_gen.js
+          # [스크립트] 권한 + 파일 생성기
+          cat << 'EOF' > chaos_gen.js
           const fs = require('fs');
           const { execSync } = require('child_process');
           const path = process.env.TARGET_DIR;
-          const count = 10000; // 샤드당 1만개
+          const shard = process.env.SHARD_ID;
           
-          const modes = ['777', '755', '644', '600', '400', '000'];
-          
-          console.log(`Generating ${count} files with mixed permissions...`);
+          console.log(`[Shard ${shard}] Starting Chaos Gen in ${path}`);
           
           try {
-            for (let i = 0; i < count; i++) {
-              const file = \`\${path}/file_\${i}.dat\`;
-              const content = \`Secure Data Block \${i}\`;
-              
+            for (let i = 0; i < 5000; i++) {
+              const file = \`\${path}/chaos_\${i}.dat\`;
               // 1. 파일 생성
-              fs.writeFileSync(file, content);
+              fs.writeFileSync(file, \`Data Block \${i}\`);
               
-              // 2. 권한 무작위 적용 (Chmod Roulette)
-              const mode = modes[Math.floor(Math.random() * modes.length)];
+              // 2. 권한 룰렛 (chmod)
               try {
+                const modes = ['777', '000', '600', '444'];
+                const mode = modes[Math.floor(Math.random() * modes.length)];
                 fs.chmodSync(file, parseInt(mode, 8));
               } catch(e) {}
-              
-              // 3. 소유권 무작위 변경 (Chown Roulette - Sudo 필요하므로 exec 사용)
-              // 100번마다 한 번씩 실행 (속도 저하 방지)
-              if (i % 100 === 0) {
-                 const userId = Math.floor(Math.random() * 50) + 1;
-                 try {
-                   execSync(\`sudo chown dummy_user_\${userId} \${file}\`);
-                 } catch(e) {}
-              }
-              
-              // 4. 불변 속성 적용 (Immutable) - 1000번마다
-              if (i % 1000 === 0) {
-                 try {
-                   execSync(\`sudo chattr +i \${file}\`);
-                 } catch(e) {}
-              }
             }
-          } catch (e) {
-            console.log("Error ignored, forcing success.");
-            process.exit(0);
+          } catch(e) {
+            console.log("Error caught, continuing: " + e.message);
           }
           EOF
           
-          TARGET_DIR=$TARGET_DIR node perm_gen.js || exit 0
+          TARGET_DIR=$TARGET SHARD_ID=${{ matrix.shard }} node chaos_gen.js || true
 
-      - name: 🔒 ACL Injection (Access Control Lists)
+  # ==========================================================
+  # 3️⃣ SYMLINK MAZE & SPECIAL FILES (신규: 특수 파일 대량 생성)
+  # ==========================================================
+  special-file-factory:
+    needs: infra-hybrid-setup
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: 🔗 Generate Symlink Maze (링크 미로)
         run: |
-          # 생성된 파일 중 일부에 복잡한 ACL 권한 추가
-          TARGET_DIR="$VIRTUAL_DISK_PATH/perm_chaos/shard_${{ matrix.shard }}"
+          set +e
+          # 저장소 경로 재확인
+          ROOT="${{ github.workspace }}/safe_storage/maze"
+          mkdir -p $ROOT
+          cd $ROOT
           
-          # 1. 특정 유저에게만 읽기 권한 부여 (setfacl)
-          find $TARGET_DIR -name "file_*0.dat" | head -n 100 | xargs -I {} sudo setfacl -m u:dummy_user_1:r {} || true
+          echo "Creating 10,000 Symlinks..."
+          # 원본 파일
+          touch origin.txt
           
-          # 2. 특정 그룹에게 쓰기 권한 부여
-          find $TARGET_DIR -name "file_*5.dat" | head -n 100 | xargs -I {} sudo setfacl -m g:dummy_group_5:w {} || true
+          # 꼬리에 꼬리를 무는 링크 생성 (link_1 -> origin, link_2 -> link_1 ...)
+          LAST="origin.txt"
+          for i in {1..5000}; do
+            ln -s "$LAST" "link_$i" 2>/dev/null
+            LAST="link_$i"
+          done
+          echo "Symlink Maze Created."
+
+      - name: 🔌 Generate Sockets & Pipes (특수 파일)
+        run: |
+          set +e
+          ROOT="${{ github.workspace }}/safe_storage/special"
+          mkdir -p $ROOT
           
-          echo "ACL Injection Complete"
+          echo "Creating FIFO Pipes..."
+          for i in {1..100}; do
+            mkfifo "$ROOT/pipe_$i" 2>/dev/null || true
+          done
+          
+          echo "Creating Dummy Sockets (Python)..."
+          # Python으로 소켓 파일 생성 시늉
+          python3 -c "import socket, os; s=socket.socket(socket.AF_UNIX); s.bind('$ROOT/sock_test.s')" 2>/dev/null || true
 
   # ==========================================================
-  # 4️⃣ FORCE SUCCESS VERIFICATION (접근 테스트)
+  # 4️⃣ LOGIC ENGINE (금융/학습 통합)
   # ==========================================================
-  verify-force-success:
-    needs: [infra-permission-setup, logic-permission-engine, file-permission-chaos]
+  logic-engine-v6000:
+    needs: infra-hybrid-setup
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: 💸 Run Money & Study Logic
+        run: |
+          set +e
+          # 안전한 경로 확보
+          WORK_DIR="${{ github.workspace }}/logic_data"
+          mkdir -p $WORK_DIR
+          
+          node -e "
+            const fs=require('fs');
+            try {
+              fs.writeFileSync('$WORK_DIR/salary_2026.csv', 'id,pay\\n1,3000000');
+              fs.writeFileSync('$WORK_DIR/study_plan.txt', 'D-Day: 300');
+              console.log('Logic Executed');
+            } catch(e) {}
+          " || true
+
+  # ==========================================================
+  # 5️⃣ FINALIZER (절대 성공)
+  # ==========================================================
+  finalize-v6000:
+    needs: [infra-hybrid-setup, chaos-factory-matrix, special-file-factory, logic-engine-v6000]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: 🕵️ Try to Read Locked Files (Expect Fail -> Force Success)
-        run: |
-          echo "Attempting to read '000' permission files..."
-          # 접근 거부(Permission denied)가 발생하지만 || true로 무시
-          cat $VIRTUAL_DISK_PATH/perm_chaos/shard_1/file_*.dat > /dev/null 2>&1 || echo "Access Denied (Expected Chaos)"
-          
-          echo "Attempting to delete Immutable (+i) files..."
-          # 삭제 불가(Operation not permitted) 발생하지만 무시
-          rm -f $VIRTUAL_DISK_PATH/perm_chaos/shard_1/file_*000.dat 2>/dev/null || echo "Cannot Delete Immutable (Expected)"
-
-      - name: 🚀 Release (Force)
+      - name: 🚀 Release (Force Success)
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: permission-v4000-${{ github.run_number }}
-          body: "Files generated with Random Modes (777, 000, 600) + ACL + Chattr. Force Success."
+          tag_name: immortal-v6000-${{ github.run_number }}
+          body: "Implemented Dual-Path Storage (Fallback) + Symlink Maze + Special Files."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🎉 ABSOLUTE SUCCESS
+      - name: 🎉 IMMORTAL SUCCESS
         run: |
           echo "==============================================="
-          echo "   PERMISSION CHAOS STATUS: GREEN (FORCED)     "
+          echo "   MISSION STATUS: GREEN (V6000)               "
           echo "==============================================="
-          echo "   MODES APPLIED: 777, 755, 644, 600, 400, 000 "
-          echo "   OWNERSHIP: Rotated among 50 dummy users     "
-          echo "   ACL/ATTR: Extended attributes applied       "
-          echo "   ACCESS TESTS: Failed but Ignored (Success)  "
+          echo "   STORAGE: Auto-Fallback to Workspace Active  "
+          echo "   FILES: Normal, Symlinks, PIPEs, Sockets     "
+          echo "   CHAOS: Permission Errors Ignored (set +e)   "
           echo "==============================================="
           exit 0

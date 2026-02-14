@@ -333,7 +333,7 @@ jobs:
         run: sleep ${{ env.RETRY_DELAY || 30 }}
       
       - name: Trigger workflow re-run
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const MAX_RETRY = parseInt('${{ env.MAX_RETRY_COUNT }}') || 3;
@@ -383,7 +383,7 @@ jobs:
             
       - name: Create issue on persistent failure
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const MAX_RETRY = parseInt('${{ env.MAX_RETRY_COUNT }}') || 3;

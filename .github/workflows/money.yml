@@ -1,4 +1,4 @@
-name: 💰 MONEY MCP ENTERPRISE HYPER MAX v19
+name: 💰 MONEY MCP INFRA HYPER MASS GENERATOR v21
 
 on:
   workflow_dispatch:
@@ -6,73 +6,81 @@ on:
 permissions: write-all
 
 env:
-  OUTPUT_DIR: money_enterprise
+  BASE_DIR: hyper_mass_env
   SHARD_COUNT: 20
-  RECORD_PER_SHARD: 50000   # 20 × 50,000 = 1,000,000
+  RECORD_PER_SHARD: 100000   # 20 × 100k = 2,000,000
 
 jobs:
 
 # ==========================================================
-# 1️⃣ BASE DIRECTORY
+# 1️⃣ MASSIVE DIRECTORY TREE
 # ==========================================================
-  base:
+  structure:
     runs-on: ubuntu-latest
     steps:
-      - name: 📁 Create All Directories
+      - name: 📁 Create Massive Directory Tree
         run: |
-          mkdir -p money_enterprise/{primary,replica,archive,logs,db,s3,kafka,spark,k8s,infra,data}
-          echo "Directories ready"
+          mkdir -p $BASE_DIR/{servers,networks,files,data,logs,db,sql,archive,replica,primary}
+          for i in {1..500}; do
+            mkdir -p $BASE_DIR/files/group_$i/sub_$i/deep_$i
+          done
+          echo "Directory structure created"
 
 # ==========================================================
-# 2️⃣ INFRA STACK (Docker Services)
+# 2️⃣ MASSIVE NETWORK + SERVER CREATION
 # ==========================================================
   infra:
-    needs: base
+    needs: structure
     runs-on: ubuntu-latest
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 🐘 PostgreSQL
+      - name: 🌐 Create 50 Networks
         run: |
-          docker run -d --name pg \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=moneydb \
-            -p 5432:5432 postgres:14 || true
-          sleep 15
+          for i in {1..50}; do
+            docker network create net_$i || true
+            echo "net_$i" >> $BASE_DIR/networks/network_list.txt
+          done
 
-      - name: 🗄 Schema Init
+      - name: 🖥 Create 50 Servers
         run: |
-          sudo apt-get install -y postgresql-client
-          PGPASSWORD=postgres psql -h localhost -U postgres -d moneydb -f db/schema.sql || true
-
-      - name: 📡 Kafka + Zookeeper
-        run: |
-          docker run -d --name zookeeper -p 2181:2181 \
-            -e ALLOW_ANONYMOUS_LOGIN=yes bitnami/zookeeper || true
-
-          docker run -d --name kafka -p 9092:9092 \
-            -e KAFKA_CFG_ZOOKEEPER_CONNECT=host.docker.internal:2181 \
-            -e ALLOW_PLAINTEXT_LISTENER=yes \
-            bitnami/kafka || true
-
-      - name: ☁️ MinIO
-        run: |
-          docker run -d --name minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER=minio \
-            -e MINIO_ROOT_PASSWORD=minio123 \
-            minio/minio server /data || true
+          for i in {1..50}; do
+            docker run -d --name server_$i --network net_$(( (i-1)%50 +1 )) nginx || true
+            echo "server_$i" >> $BASE_DIR/servers/server_list.txt
+          done
 
       - name: 📝 Infra Log
-        run: echo "Infra Stack Ready" > money_enterprise/logs/infra.log
+        run: |
+          mkdir -p $BASE_DIR/logs
+          echo "Servers & Networks Created" > $BASE_DIR/logs/infra.log
 
 # ==========================================================
-# 3️⃣ MASSIVE GENERATION (20 SHARDS)
+# 3️⃣ MASSIVE FILE + SQL FILE GENERATION
 # ==========================================================
-  massive:
+  file-sql-mass:
     needs: infra
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📄 Generate 50,000 Files
+        run: |
+          mkdir -p $BASE_DIR/files
+          for i in {1..50000}; do
+            echo "file_$i data" > $BASE_DIR/files/file_$i.txt
+          done
+
+      - name: 🗄 Generate 5,000 SQL Files
+        run: |
+          mkdir -p $BASE_DIR/sql
+          for i in {1..5000}; do
+            echo "CREATE TABLE IF NOT EXISTS table_$i(id INT, value NUMERIC);" > $BASE_DIR/sql/schema_$i.sql
+          done
+
+# ==========================================================
+# 4️⃣ MASSIVE DATA SHARD GENERATION (2M RECORDS)
+# ==========================================================
+  data-mass:
+    needs: file-sql-mass
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -84,103 +92,83 @@ jobs:
         with:
           node-version: 20
 
-      - name: 📁 Ensure Directories
-        run: mkdir -p money_enterprise/{primary,logs,kafka,s3}
+      - name: 📁 Ensure Data Dir
+        run: mkdir -p $BASE_DIR/data
 
-      - name: 🧠 Stream Generate
+      - name: 🧠 Generate CSV
         run: |
           cat << 'EOF' > engine.js
           const fs = require('fs');
           const SHARD = process.env.SHARD;
           const COUNT = parseInt(process.env.RECORD_PER_SHARD);
 
-          const file = `money_enterprise/primary/shard_${SHARD}.csv`;
+          const file = `${process.env.BASE_DIR}/data/shard_${SHARD}.csv`;
           const stream = fs.createWriteStream(file);
-          stream.write('id,shard_id,revenue,cost,tax,profit\n');
+          stream.write('id,value\n');
 
           for (let i=0;i<COUNT;i++){
-            const revenue = Math.floor(Math.random()*10000000);
-            const cost = Math.floor(Math.random()*5000000);
-            const tax = (revenue*0.1).toFixed(2);
-            const profit = (revenue-cost-tax).toFixed(2);
-
-            stream.write(`${i},${SHARD},${revenue},${cost},${tax},${profit}\n`);
+            stream.write(`${i},${Math.random()*100000}\n`);
           }
 
           stream.end();
-          console.log("Shard",SHARD,"complete");
+          console.log("Shard",SHARD,"done");
           EOF
 
-          SHARD=${{ matrix.shard }} RECORD_PER_SHARD=${{ env.RECORD_PER_SHARD }} node engine.js
+          SHARD=${{ matrix.shard }} RECORD_PER_SHARD=${{ env.RECORD_PER_SHARD }} BASE_DIR=${{ env.BASE_DIR }} node engine.js
 
-      - name: 🐘 DB Insert
-        run: |
-          sudo apt-get install -y postgresql-client
-          PGPASSWORD=postgres psql -h localhost -U postgres -d moneydb \
-            -c "\COPY transactions(id, shard_id, revenue, cost, tax, profit) FROM 'money_enterprise/primary/shard_${{ matrix.shard }}.csv' WITH CSV HEADER" || true
-
-      - name: 📡 Kafka Simulated Publish
-        run: |
-          cp money_enterprise/primary/shard_${{ matrix.shard }}.csv money_enterprise/kafka/published_${{ matrix.shard }}.csv || true
-
-      - name: ☁️ S3 Backup
-        run: |
-          cp money_enterprise/primary/shard_${{ matrix.shard }}.csv money_enterprise/s3/s3_${{ matrix.shard }}.csv || true
-
-      - name: 📝 Log
-        run: echo "Shard ${{ matrix.shard }} done" >> money_enterprise/logs/process.log
-
-      - name: 📦 Upload Shard Artifact
+      - name: 📦 Upload Data Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: shard-${{ matrix.shard }}
-          path: money_enterprise/
+          name: data-shard-${{ matrix.shard }}
+          path: ${{ env.BASE_DIR }}/data/
 
 # ==========================================================
-# 4️⃣ SPARK LOCAL PROCESS
+# 5️⃣ DATABASE MASS LOAD + SQL EXECUTION
 # ==========================================================
-  spark:
-    needs: massive
+  db-load:
+    needs: data-mass
     runs-on: ubuntu-latest
     continue-on-error: true
 
     steps:
-      - name: 🔥 Spark Container
+      - name: 🐘 Start PostgreSQL
         run: |
-          docker run --rm -v $PWD:/data bitnami/spark \
-            spark-submit --version || true
+          docker run -d --name pg \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=hyperdb \
+            -p 5432:5432 postgres:14 || true
+          sleep 15
 
-      - name: 📊 Spark Log
-        run: echo "Spark Batch Executed" > money_enterprise/spark/spark.log
+      - name: 🗄 Create Base Table
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -d hyperdb \
+            -c "CREATE TABLE IF NOT EXISTS main(id INT, value NUMERIC);" || true
+
+      - name: 📥 Load CSV Data
+        run: |
+          for f in $BASE_DIR/data/*.csv; do
+            PGPASSWORD=postgres psql -h localhost -U postgres -d hyperdb \
+              -c "\COPY main FROM '$f' WITH CSV HEADER" || true
+          done
+
+      - name: 🧩 Execute 5,000 SQL Files
+        run: |
+          for f in $BASE_DIR/sql/*.sql; do
+            PGPASSWORD=postgres psql -h localhost -U postgres -d hyperdb -f "$f" || true
+          done
+
+      - name: 💾 Generate Multiple DB Dumps
+        run: |
+          for i in {1..5}; do
+            PGPASSWORD=postgres pg_dump -h localhost -U postgres hyperdb > $BASE_DIR/db/dump_$i.sql || true
+          done
 
 # ==========================================================
-# 5️⃣ KUBERNETES (Kind)
-# ==========================================================
-  k8s:
-    needs: spark
-    runs-on: ubuntu-latest
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: ☸️ Install Kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          kind create cluster || true
-
-      - name: 🚀 Deploy
-        run: |
-          kubectl apply -f k8s/job.yaml || true
-          echo "K8s deployed" > money_enterprise/k8s/deploy.log
-
-# ==========================================================
-# 6️⃣ FINAL MERGE + DR + HASH + RELEASE
+# 6️⃣ FINALIZE + DR + HASH + RELEASE
 # ==========================================================
   finalize:
-    needs: [massive,spark,k8s]
+    needs: [data-mass,db-load]
     runs-on: ubuntu-latest
     if: always()
 
@@ -192,36 +180,39 @@ jobs:
 
       - name: 📁 Ensure Structure
         run: |
-          mkdir -p money_enterprise/{primary,replica,archive}
+          mkdir -p $BASE_DIR/{primary,replica,archive,logs}
 
-      - name: 🔄 Merge Primary
+      - name: 🔄 Merge Data
         run: |
-          find merged -type f -name "*.csv" -exec cp {} money_enterprise/primary/ \; || true
+          find merged -type f -name "*.csv" -exec cp {} $BASE_DIR/primary/ \; || true
 
-      - name: 🔁 DR Sync
+      - name: 🔁 Replica Sync
         run: |
-          cp -r money_enterprise/primary/. money_enterprise/replica/ || true
-          cp -r money_enterprise/primary/. money_enterprise/archive/ || true
-          tar -czf money_enterprise/archive/full_archive.tar.gz money_enterprise/primary || true
+          cp -r $BASE_DIR/primary/. $BASE_DIR/replica/ || true
 
-      - name: 🔐 Global SHA512
+      - name: 📦 Archive
         run: |
-          find money_enterprise -type f -exec sha512sum {} \; > money_enterprise/logs/global_hash.txt
+          cp -r $BASE_DIR/primary/. $BASE_DIR/archive/ || true
+          tar -czf hyper_archive.tar.gz $BASE_DIR || true
+
+      - name: 🔐 SHA512
+        run: |
+          find $BASE_DIR -type f -exec sha512sum {} \; > $BASE_DIR/logs/global_hash.txt
 
       - name: 📜 SBOM
-        run: echo "MONEY MCP ENTERPRISE HYPER MAX v19" > money_enterprise/SBOM.txt
+        run: echo "HYPER MASS v21 SBOM" > $BASE_DIR/SBOM.txt
 
-      - name: 📦 Final ZIP
-        run: zip -r enterprise_hyper_max_v19.zip money_enterprise || true
+      - name: 📦 ZIP
+        run: zip -r hyper_mass_v21.zip $BASE_DIR || true
 
       - name: 🚀 Release
         uses: softprops/action-gh-release@v2
         if: always()
         with:
-          tag_name: hyper-max-v19-${{ github.run_number }}
-          files: enterprise_hyper_max_v19.zip
+          tag_name: hyper-v21-${{ github.run_number }}
+          files: hyper_mass_v21.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🎉 COMPLETE
-        run: echo "HYPER MAX v19 COMPLETE"
+        run: echo "HYPER MASS INFRA + SQL + DB GENERATION COMPLETE"

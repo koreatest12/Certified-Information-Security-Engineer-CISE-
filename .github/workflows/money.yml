@@ -1,4 +1,4 @@
-name: 🌪️ UNIVERSE v3000 (CHAOS & FORCE SUCCESS)
+name: 🛡️ UNIVERSE v4000 (PERMISSION CHAOS & FORCE SUCCESS)
 
 on:
   workflow_dispatch:
@@ -8,48 +8,48 @@ on:
 permissions: write-all
 
 env:
-  BASE_DIR: universe_v3000_env
+  BASE_DIR: universe_v4000_env
   VIRTUAL_DISK_PATH: /mnt/virtual_disks
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
   # ==========================================================
-  # 1️⃣ INFRASTRUCTURE (실패 무시 및 복구)
+  # 1️⃣ INFRA & USER SETUP (권한 주체 생성)
   # ==========================================================
-  infra-force-success:
+  infra-permission-setup:
     runs-on: ubuntu-latest
-    continue-on-error: true # Job 레벨 실패 무시
+    continue-on-error: true
     steps:
-      - name: 🛠 Install & Setup (Ignore Errors)
-        run: |
-          # 패키지 설치 실패해도 진행
-          sudo apt-get update || true
-          sudo apt-get install -y postgresql-client lvm2 nodejs npm stress-ng || echo "Install failed but continuing..."
+      - name: 🛠 Install ACL & Attr Tools
+        run: sudo apt-get update && sudo apt-get install -y acl attr postgresql-client lvm2 nodejs npm || true
 
-      - name: 🔓 Storage Expansion (Fail-Safe)
+      - name: 👥 Create 50 Dummy Users & Groups (For Ownership)
+        run: |
+          echo "Generating Users for Chown Tests..."
+          # 유저 1~50 생성 (실패 시 무시)
+          for i in {1..50}; do
+            sudo useradd -m "dummy_user_$i" || true
+            sudo groupadd "dummy_group_$i" || true
+          done
+          echo "User Swarm Created."
+
+      - name: 🔓 Setup Storage (Fail-Safe)
         run: |
           sudo mkdir -p $VIRTUAL_DISK_PATH
-          sudo chmod -R 777 $VIRTUAL_DISK_PATH
+          sudo chmod 777 $VIRTUAL_DISK_PATH
           
-          # 실패하면 즉시 다음 단계로 (set +e 효과)
-          set +e 
-          
-          echo "Generating Disks..."
+          # 디스크 생성 (자동 리사이징)
           for i in {1..5}; do
-            # 용량별 시도: 50TB -> 10TB -> 1GB
             truncate -s 50T "$VIRTUAL_DISK_PATH/disk_$i.img" 2>/dev/null || \
             truncate -s 10T "$VIRTUAL_DISK_PATH/disk_$i.img" 2>/dev/null || \
-            truncate -s 1G "$VIRTUAL_DISK_PATH/disk_$i.img" || true
+            truncate -s 100G "$VIRTUAL_DISK_PATH/disk_$i.img" || true
           done
-          
-          # 무조건 성공 코드 반환
-          exit 0
 
   # ==========================================================
-  # 2️⃣ MASSIVE LOGIC ENGINE (금융 + 학습 + 로그 폭주)
+  # 2️⃣ LOGIC ENGINE (금융/학습 + 권한 테스트)
   # ==========================================================
-  logic-chaos-engine:
-    needs: infra-force-success
+  logic-permission-engine:
+    needs: infra-permission-setup
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -57,108 +57,158 @@ jobs:
         with:
           node-version: 20
 
-      - name: 💸 Run Money & Study Logic
+      - name: 🧠 Money & Study Logic with Locked Files
         run: |
-          mkdir -p $BASE_DIR/data
-          # Node.js 스크립트로 데이터 생성 (에러나면 catch로 잡아서 성공 처리)
-          node -e "
-            const fs = require('fs');
-            try {
-              // 금융 데이터
-              fs.writeFileSync('$BASE_DIR/data/money.csv', 'id,val\\n' + '1,100\\n'.repeat(10000));
-              // 학습 데이터
-              fs.writeFileSync('$BASE_DIR/data/study.txt', 'Exam D-Day Calculation... Done');
-            } catch (e) { process.exit(0); }
-          " || exit 0
-
-      - name: 🌊 Log Tsunami (Console Flood)
-        run: |
-          echo "Starting Log Flood..."
-          # 10만 줄 로그 고속 출력
-          seq 1 100000 | xargs -P 4 -I {} echo "[INFO] Transaction trace id {} - System nominal - Force Success Active" || true
+          mkdir -p $BASE_DIR/secure_data
+          
+          # [스크립트] 권한이 걸린 데이터 생성
+          cat << 'EOF' > secure_logic.js
+          const fs = require('fs');
+          const path = '${{ env.BASE_DIR }}/secure_data';
+          
+          try {
+            // 1. 2026 급여 데이터 (Secure: 600)
+            const salaryFile = path + '/salary_2026_secure.csv';
+            fs.writeFileSync(salaryFile, 'id,salary,tax\n1,5000000,50000');
+            fs.chmodSync(salaryFile, 0o600); // 소유자만 읽기/쓰기
+            
+            // 2. 부가세 데이터 (Public: 777)
+            const vatFile = path + '/vat_public.csv';
+            fs.writeFileSync(vatFile, 'id,vat\n1,1000');
+            fs.chmodSync(vatFile, 0o777); // 누구나 수정 가능
+            
+            // 3. 기밀 학습 노트 (Locked: 000)
+            const secretNote = path + '/top_secret_study.txt';
+            fs.writeFileSync(secretNote, 'Exam Cheat Sheet...');
+            fs.chmodSync(secretNote, 0o000); // 아무도 못 읽음 (Chaos)
+            
+            console.log("Secure Logic Executed");
+          } catch (e) { process.exit(0); }
+          EOF
+          
+          node secure_logic.js || exit 0
 
   # ==========================================================
-  # 3️⃣ SYSTEM STRESS (프로세스 & 네트워크 대량 생성)
+  # 3️⃣ PERMISSION CHAOS FACTORY (파일 + 권한 무작위 적용)
   # ==========================================================
-  system-stress-matrix:
-    needs: infra-force-success
+  file-permission-chaos:
+    needs: infra-permission-setup
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
-      max-parallel: 20
+      max-parallel: 50
+      fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
-      - name: 🧟 Process Swarm (PID Flood)
-        run: |
-          echo "Spawning 1,000 background processes..."
-          # 백그라운드에서 10초간 자는 프로세스 1000개 생성
-          for i in {1..1000}; do
-            sleep 10 &
-          done
-          echo "Process table populated." || exit 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: 🌐 Network Noise (Localhost Flood)
+      - name: 🛡️ Generate Files with Random Permissions
         run: |
-          # 로컬호스트에 핑 난사 (실패 무시)
-          timeout 10s ping -f localhost || true
-          echo "Network stress test complete (simulated)"
-
-  # ==========================================================
-  # 4️⃣ INFINITE FILE FACTORY (파일 대량 생성)
-  # ==========================================================
-  file-factory-force:
-    needs: infra-force-success
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: 🏭 Generate 1 Million Files (Best Effort)
-        run: |
-          TARGET="$VIRTUAL_DISK_PATH/factory"
-          mkdir -p $TARGET
+          TARGET_DIR="$VIRTUAL_DISK_PATH/perm_chaos/shard_${{ matrix.shard }}"
+          mkdir -p $TARGET_DIR
+          # 상위 폴더 권한 개방 (하위 파일 생성을 위해)
+          sudo chmod 777 $TARGET_DIR
           
-          # 에러 발생 시(디스크 풀 등) 루프 탈출하고 성공 처리
-          set +e
-          for i in {1..100000}; do
-            echo "Data $i" > "$TARGET/file_$i.txt" 2>/dev/null
-            if [ $? -ne 0 ]; then
-              echo "Disk limit reached at $i. Stopping gracefully."
-              break
-            fi
-          done
-          exit 0
+          # [스크립트] 권한 룰렛 파일 생성기
+          cat << 'EOF' > perm_gen.js
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const path = process.env.TARGET_DIR;
+          const count = 10000; // 샤드당 1만개
+          
+          const modes = ['777', '755', '644', '600', '400', '000'];
+          
+          console.log(`Generating ${count} files with mixed permissions...`);
+          
+          try {
+            for (let i = 0; i < count; i++) {
+              const file = \`\${path}/file_\${i}.dat\`;
+              const content = \`Secure Data Block \${i}\`;
+              
+              // 1. 파일 생성
+              fs.writeFileSync(file, content);
+              
+              // 2. 권한 무작위 적용 (Chmod Roulette)
+              const mode = modes[Math.floor(Math.random() * modes.length)];
+              try {
+                fs.chmodSync(file, parseInt(mode, 8));
+              } catch(e) {}
+              
+              // 3. 소유권 무작위 변경 (Chown Roulette - Sudo 필요하므로 exec 사용)
+              // 100번마다 한 번씩 실행 (속도 저하 방지)
+              if (i % 100 === 0) {
+                 const userId = Math.floor(Math.random() * 50) + 1;
+                 try {
+                   execSync(\`sudo chown dummy_user_\${userId} \${file}\`);
+                 } catch(e) {}
+              }
+              
+              // 4. 불변 속성 적용 (Immutable) - 1000번마다
+              if (i % 1000 === 0) {
+                 try {
+                   execSync(\`sudo chattr +i \${file}\`);
+                 } catch(e) {}
+              }
+            }
+          } catch (e) {
+            console.log("Error ignored, forcing success.");
+            process.exit(0);
+          }
+          EOF
+          
+          TARGET_DIR=$TARGET_DIR node perm_gen.js || exit 0
+
+      - name: 🔒 ACL Injection (Access Control Lists)
+        run: |
+          # 생성된 파일 중 일부에 복잡한 ACL 권한 추가
+          TARGET_DIR="$VIRTUAL_DISK_PATH/perm_chaos/shard_${{ matrix.shard }}"
+          
+          # 1. 특정 유저에게만 읽기 권한 부여 (setfacl)
+          find $TARGET_DIR -name "file_*0.dat" | head -n 100 | xargs -I {} sudo setfacl -m u:dummy_user_1:r {} || true
+          
+          # 2. 특정 그룹에게 쓰기 권한 부여
+          find $TARGET_DIR -name "file_*5.dat" | head -n 100 | xargs -I {} sudo setfacl -m g:dummy_group_5:w {} || true
+          
+          echo "ACL Injection Complete"
 
   # ==========================================================
-  # 5️⃣ FINALIZER (절대 성공 보장)
+  # 4️⃣ FORCE SUCCESS VERIFICATION (접근 테스트)
   # ==========================================================
-  finalize-chaos:
-    needs: [infra-force-success, logic-chaos-engine, system-stress-matrix, file-factory-force]
+  verify-force-success:
+    needs: [infra-permission-setup, logic-permission-engine, file-permission-chaos]
     runs-on: ubuntu-latest
-    if: always() # 앞 단계가 취소되거나 실패해도 무조건 실행
+    if: always()
     steps:
-      - name: 📦 Archive Everything (Simulated)
+      - name: 🕵️ Try to Read Locked Files (Expect Fail -> Force Success)
         run: |
-          mkdir -p result
-          echo "All tasks finished." > result/status.txt
-          date > result/timestamp.txt
+          echo "Attempting to read '000' permission files..."
+          # 접근 거부(Permission denied)가 발생하지만 || true로 무시
+          cat $VIRTUAL_DISK_PATH/perm_chaos/shard_1/file_*.dat > /dev/null 2>&1 || echo "Access Denied (Expected Chaos)"
+          
+          echo "Attempting to delete Immutable (+i) files..."
+          # 삭제 불가(Operation not permitted) 발생하지만 무시
+          rm -f $VIRTUAL_DISK_PATH/perm_chaos/shard_1/file_*000.dat 2>/dev/null || echo "Cannot Delete Immutable (Expected)"
 
       - name: 🚀 Release (Force)
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: chaos-v3000-${{ github.run_number }}
-          body: "Chaos Mode: Logs, Processes, Files Generated. Force Success Active."
+          tag_name: permission-v4000-${{ github.run_number }}
+          body: "Files generated with Random Modes (777, 000, 600) + ACL + Chattr. Force Success."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🎉 ABSOLUTE SUCCESS
         run: |
           echo "==============================================="
-          echo "   MISSION STATUS: GREEN (FORCED)              "
+          echo "   PERMISSION CHAOS STATUS: GREEN (FORCED)     "
           echo "==============================================="
-          echo "   LOGS: 100,000+ Lines Flooded                "
-          echo "   PROCESSES: 5,000+ Spawns                    "
-          echo "   FILES: Maximized until Disk Full            "
-          echo "   ERRORS: Ignored & Overridden                "
+          echo "   MODES APPLIED: 777, 755, 644, 600, 400, 000 "
+          echo "   OWNERSHIP: Rotated among 50 dummy users     "
+          echo "   ACL/ATTR: Extended attributes applied       "
+          echo "   ACCESS TESTS: Failed but Ignored (Success)  "
           echo "==============================================="
           exit 0

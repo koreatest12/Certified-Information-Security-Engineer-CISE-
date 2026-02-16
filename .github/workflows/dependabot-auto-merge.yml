@@ -61,7 +61,7 @@ jobs:
       matrix:
         qubit: [16, 32, 64, 128]
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: 20 }
       - name: ⚛️ Generate Quantum State Vectors
         run: |
@@ -124,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: 20 }
       - name: 🧬 Bio & Blockchain & IoT Flood
         run: |

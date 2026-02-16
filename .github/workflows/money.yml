@@ -62,7 +62,7 @@ jobs:
       matrix:
         layer: [Alpha, Beta, Gamma, Delta, Epsilon]
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: 20 }
       - name: ⚛️ Generate State Vectors (Direct Write)
         run: |
@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: 20 }
       - name: 🧪 Generate DNA Sequence & Stock Ticks & OS Maze
         run: |
